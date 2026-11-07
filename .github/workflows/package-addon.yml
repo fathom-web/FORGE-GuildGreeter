@@ -1,0 +1,38 @@
+name: Package GuildGreeter for CurseForge
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'ForgeGuildGreeter/**'
+      - '.github/workflows/package-addon.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify addon structure
+        run: |
+          set -euo pipefail
+          for f in ForgeGuildGreeter/ForgeGuildGreeter.toc ForgeGuildGreeter/ForgeGuildGreeter_Forever.toc ForgeGuildGreeter/Core.lua ForgeGuildGreeter/UI.lua ForgeGuildGreeter/Minimap.lua; do
+            test -s "$f"
+          done
+          grep -q '## Version: 0.1.0' ForgeGuildGreeter/ForgeGuildGreeter.toc
+      - name: Create ZIP
+        run: |
+          set -euo pipefail
+          zip -9 -r FORGE_GuildGreeter_0.1.0.zip ForgeGuildGreeter -x '*/.DS_Store' '*__MACOSX*'
+          unzip -t FORGE_GuildGreeter_0.1.0.zip
+          unzip -Z1 FORGE_GuildGreeter_0.1.0.zip
+      - name: Store artifact for maintainer
+        uses: actions/upload-artifact@v4
+        with:
+          name: FORGE_GuildGreeter_0.1.0_CurseForge_upload
+          path: FORGE_GuildGreeter_0.1.0.zip
+          retention-days: 14
+          if-no-files-found: error
