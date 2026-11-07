@@ -4,21 +4,22 @@
 
 A customizable, lightweight World of Warcraft **Forever** guild welcome addon by [Novyx Forge](https://wow.novyxforge.com/). Built using the dark charcoal/gold native UI design language of **FORGE AFK — DAD MODE**.
 
-**Version: 0.1.0** — development build; in-game verification is required before CurseForge publication.
+**Version: 0.1.1** — development build; in-game verification is required before CurseForge publication.
 
 ## What it does
 
 - **New guild members:** detect players appearing in the guild roster after the initial baseline, and announce a welcome.
 - **Existing members who come online:** detect changes from offline to online and greet them once.
 - **No login flood:** the guild members already visible when you log in are the baseline, not new arrivals.
-- **Two independent greeting libraries:** edit, add, remove or cycle through up to **50 custom messages per event**. Four humorous examples of each are included.
+- **Five fixed, fully editable welcome messages:** all five are used in a shuffled rotation before any repeats; the next round never starts with the previous round's last message. The rotation survives /reload and reconnects.
+- **Online greetings:** edit, add, remove or cycle through up to **50 custom login messages**. Four humorous examples are included.
 - **Template variables:** \`{player}\`, \`{full}\`, \`{guild}\`, \`{class}\`, \`{level}\`, \`{rank}\`.
 - **Send channels per event:** Guild chat (default), whisper, officer chat, or **LOCAL** (only you see the text).
 - **Optional Discord reminder:** edit the appended text. Disabled by default; your server invite link is not guessed or hardcoded.
 - **Anti-spam:** configurable per-player/event cooldown (5–120 minutes), spacing between announcements (5–30 seconds), and outgoing limit (1–8 every five minutes). Stale queue entries expire.
 - **Quiet hours:** optional start/end hours using WoW's **server clock**, including midnight-crossing windows.
 - **Guild Master only:** enabled by default to reduce duplicate automated greetings if several guildmates install the addon. You can disable this to allow other ranks, but multiple broadcasters may duplicate greetings.
-- **Randomized or sequential texts.** Consecutive repeats of the same randomly selected template are avoided.
+- **Randomized or sequential texts.** Welcome greetings always rotate without repeats: five distinct slots per round, then a new round. Online messages use the standard random/sequential option.
 - **Saved settings, moveable panel, draggable minimap icon.** Right-click the minimap icon to pause/resume all announcements.
 - No third-party libraries, tracking, accounts, or background servers.
 
@@ -28,7 +29,7 @@ Dark charcoal background, gold typography and buttons, same visual conventions a
 
 | Tab | What you can customize |
 | --- | --- |
-| WELCOME | Welcome messages, channel, add/remove/save, live preview |
+| WELCOME | Five fixed welcome slots: edit/save each message, select send channel, live preview and no-repeat rotation |
 | ONLINE | Return greetings, channel, add/remove/save, live preview |
 | SETTINGS | Guild Master only, randomized text, Discord reminders, quiet hours, cooldown, chat pacing, maximum messages, quiet window, Discord text |
 | ABOUT | Behavior, limitations, commands, Novyx Forge link |
@@ -104,7 +105,7 @@ Similarly, a successful API call in a headless test cannot guarantee the game se
 
 ## Roadmap
 
-V1 is deliberately focused on **welcoming guildmates**. Potential follow-ups include per-player greetings, rank-specific templates, shared master election and localization after client behavior has been verified.
+V1 is deliberately focused on **welcoming guildmates**. For the five welcome slots, Add/Delete are intentionally unavailable; you can rewrite all five texts without losing the no-repeat guarantee. Existing installations with four greetings get a fifth without overwriting their custom first four. Extra experimental greetings beyond five are archived in SavedVariables. Potential follow-ups include per-player greetings, rank-specific templates, shared master election and localization after client behavior has been verified.
 
 ## License
 
