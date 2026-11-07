@@ -2,7 +2,7 @@ local addonName, ns = ...
 local Greeter = {}
 ns.Greeter = Greeter
 
-Greeter.version = "0.1.0"
+Greeter.version = "0.1.1"
 Greeter.brand = "NOVYX FORGE"
 Greeter.channels = { "GUILD", "WHISPER", "OFFICER", "LOCAL" }
 Greeter.cooldowns = { 5, 15, 30, 60, 120 }
@@ -14,6 +14,7 @@ Greeter.defaults = {
         "A new adventurer appears! Welcome {player}! We have cookies. Probably.",
         "Welcome aboard, {player}! Bad pulls, terrible jokes and good times guaranteed.",
         "Everybody wave! {player} just joined {guild}. No refunds!",
+        "Welcome {player}! Leave your dignity at the door. We lost ours several wipes ago.",
     },
     online = {
         "Look who's back! {player} has returned. Hide the good loot!",
@@ -139,9 +140,46 @@ function Greeter:Expand(template, member)
     end))
 end
 
+-- Welcome messages have five fixed editable slots. Their shuffled-bag state
+-- is saved, so reloading the game does not restart the cycle or repeat a slot.
+function Greeter:PickWelcomeMessage()
+    local items = self.db.messages.welcome
+    local rotation = self.db.welcomeRotation
+    if not rotation then
+        rotation = { remaining = {}, lastIndex = 0 }
+        self.db.welcomeRotation = rotation
+    end
+    if #rotation.remaining == 0 then
+        local bag = {}
+        if self.db.randomMessages then
+            for i = 1, #items do bag[i] = i end
+            for i = #bag, 2, -1 do
+                local j = math.random(i)
+                bag[i], bag[j] = bag[j], bag[i]
+            end
+        else
+            -- Preserve the previous choice when switching rotation modes.
+            local start = (rotation.lastIndex % #items) + 1
+            for i = 1, #items do
+                bag[i] = ((start + i - 2) % #items) + 1
+            end
+        end
+        if #bag > 1 and bag[1] == rotation.lastIndex then
+            bag[1], bag[2] = bag[2], bag[1]
+        end
+        rotation.remaining = bag
+    end
+    local index = table.remove(rotation.remaining, 1)
+    rotation.lastIndex = index
+    return items[index]
+end
+
 function Greeter:PickMessage(kind)
     local items = self.db.messages[kind]
     if not items or #items == 0 then return nil end
+    if kind == "welcome" then
+        return self:PickWelcomeMessage()
+    end
     local index
     if self.db.randomMessages and #items > 1 then
         index = math.random(#items)
@@ -291,6 +329,13 @@ function Greeter:SaveMessage(kind, index, text)
     end
     text = type(text) == "string" and text:match("^%s*(.-)%s*$") or ""
     if text == "" or #text > 220 then return false, "Use 1-220 characters." end
+    if kind == "welcome" then
+        for i, existing in ipairs(items) do
+            if i ~= index and existing == text then
+                return false, "All five welcome messages must be different."
+            end
+        end
+    end
     items[index] = text
     self:RefreshUI()
     return true
@@ -299,6 +344,7 @@ end
 function Greeter:AddMessage(kind, text)
     local items = self.db.messages[kind]
     if not items then return false, "Invalid message type." end
+    if kind == "welcome" then return false, "Welcome messages use exactly five editable slots." end
     if #items >= 50 then return false, "Maximum 50 messages per type." end
     text = type(text) == "string" and text:match("^%s*(.-)%s*$") or ""
     if text == "" or #text > 220 then return false, "Use 1-220 characters." end
@@ -310,6 +356,7 @@ end
 function Greeter:DeleteMessage(kind, index)
     local items = self.db.messages[kind]
     if not items or not items[index] then return false, "Invalid message." end
+    if kind == "welcome" then return false, "Edit one of the five fixed welcome messages instead." end
     if #items == 1 then return false, "Keep at least one message." end
     table.remove(items, index)
     self:RefreshUI()
@@ -339,6 +386,63 @@ function Greeter:Initialize()
         if type(db.messages[kind]) ~= "table" or #db.messages[kind] == 0 then
             db.messages[kind] = CopyArray(defaults)
         end
+    end
+    -- Upgrade older installations without overwriting edited welcome slots.
+    -- Any extras from experimental builds are archived in SavedVariables.
+    local welcomes = db.messages.welcome
+    if #welcomes > 5 then
+        if type(db.archivedWelcomeMessages) ~= "table" then
+            db.archivedWelcomeMessages = {}
+        end
+        for i = 6, #welcomes do
+            db.archivedWelcomeMessages[#db.archivedWelcomeMessages + 1] = welcomes[i]
+        end
+        for i = #welcomes, 6, -1 do welcomes[i] = nil end
+    end
+    for i = #welcomes + 1, 5 do
+        welcomes[i] = self.defaults.welcome[i]
+    end
+    -- A user can still edit each message after migration; use distinct
+    -- defaults when legacy data contains duplicate strings.
+    for i = 1, 5 do
+        if type(welcomes[i]) ~= "string" or welcomes[i] == "" or #welcomes[i] > 220 then
+            welcomes[i] = self.defaults.welcome[i]
+        end
+        for j = 1, i - 1 do
+            if welcomes[i] == welcomes[j] then
+                welcomes[i] = self.defaults.welcome[i]
+                local suffix = 2
+                while true do
+                    local unique = true
+                    for k = 1, i - 1 do
+                        if welcomes[i] == welcomes[k] then unique = false; break end
+                    end
+                    if unique then break end
+                    welcomes[i] = "Welcome {player}! Greetings from {guild}. Message " .. tostring(suffix) .. "."
+                    suffix = suffix + 1
+                end
+            end
+        end
+    end
+    if type(db.welcomeRotation) ~= "table" then db.welcomeRotation = {} end
+    local rotation = db.welcomeRotation
+    if type(rotation.lastIndex) ~= "number" or rotation.lastIndex < 0
+        or rotation.lastIndex > 5 or rotation.lastIndex ~= math.floor(rotation.lastIndex) then
+        rotation.lastIndex = 0
+    end
+    if type(rotation.remaining) ~= "table" then rotation.remaining = {} end
+    local seen = {}
+    local valid = #rotation.remaining <= 5
+    for _, index in ipairs(rotation.remaining) do
+        if type(index) ~= "number" or index < 1 or index > 5
+            or index ~= math.floor(index) or seen[index] then
+            valid = false
+            break
+        end
+        seen[index] = true
+    end
+    if not valid or (#rotation.remaining > 0 and rotation.remaining[1] == rotation.lastIndex) then
+        rotation.remaining = {}
     end
     if type(db.channels) ~= "table" then db.channels = {} end
     for _, kind in ipairs({ "welcome", "online" }) do
