@@ -171,7 +171,7 @@ function Greeter:CreateUI()
 
     local tabs = {}
     local tabIDs = { "welcome", "online", "settings", "about" }
-    local tabNames = { "WELCOME", "ONLINE", "SETTINGS", "ABOUT" }
+    local tabNames = { "WELCOME", "ONLINE", "ADVANCED", "ACTIVITY" }
     for i, tab in ipairs(tabIDs) do
         tabs[tab] = Button(p, tabNames[i], 19 + (i - 1) * 120, -191, 111, 34,
             function() Greeter:ChangeTab(tab) end)
@@ -193,20 +193,36 @@ function Greeter:CreateUI()
         Greeter:UpdatePreview()
     end)
 
-    Button(editor, "SAVE MESSAGE", 0, -109, 149, 38, function()
+    Button(editor, "SAVE", 0, -109, 149, 38, function()
         if Greeter:CommitDraft() then Greeter:Print("Message saved.") end
     end)
-    local addButton = Button(editor, "ADD NEW", 161, -109, 149, 38, function()
-        if not Greeter:CommitDraft() then return end
+    Button(editor, "PREVIEW", 161, -109, 149, 38, function()
+        Greeter:PreviewSelected(Greeter:CurrentKind(), Greeter.ui.messageEdit:GetText())
+    end)
+    Button(editor, "SEND TEST", 322, -109, 150, 38, function()
         local kind = Greeter:CurrentKind()
-        local starter = kind == "welcome" and "Welcome {player} to {guild}!" or "Welcome back, {player}!"
-        local ok, index = Greeter:AddMessage(kind, starter)
+        if Greeter:CommitDraft() then
+            Greeter:SendTest(kind, Greeter.ui.messageEdit:GetText())
+        end
+    end)
+
+    local addButton = Button(editor, "ADD NEW", 242, -163, 110, 37, function()
+        local kind = Greeter:CurrentKind()
+        if not Greeter:CommitDraft() then return end
+        if kind == "welcome" then
+            local ok, err = Greeter:RestoreTemplate(kind, Greeter.ui.index[kind])
+            if not ok then Greeter:Print(err); return end
+            Greeter:LoadSelectedMessage()
+            Greeter:Print("Original welcome message restored.")
+            return
+        end
+        local ok, index = Greeter:AddMessage(kind, "Welcome back, {player}!")
         if not ok then Greeter:Print(index); return end
         Greeter.ui.index[kind] = index
         Greeter:LoadSelectedMessage()
         Greeter:UpdatePanel()
     end)
-    local deleteButton = Button(editor, "DELETE", 322, -109, 150, 38, function()
+    local deleteButton = Button(editor, "DELETE", 362, -163, 110, 37, function()
         local kind = Greeter:CurrentKind()
         local ok, err = Greeter:DeleteMessage(kind, Greeter.ui.index[kind])
         if not ok then Greeter:Print(err); return end
@@ -214,8 +230,7 @@ function Greeter:CreateUI()
         Greeter:LoadSelectedMessage()
         Greeter:UpdatePanel()
     end)
-
-    local channelBtn = Button(editor, "", 0, -163, 472, 37, function()
+    local channelBtn = Button(editor, "", 0, -163, 232, 37, function()
         local kind = Greeter:CurrentKind()
         Greeter.db.channels[kind] = Cycle(Greeter.channels, Greeter.db.channels[kind])
         Greeter:RefreshUI()
