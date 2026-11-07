@@ -86,8 +86,9 @@ function Greeter:TryChat(content, channel, recipient)
     end
     -- A successful protected call means submission was attempted. There is
     -- no guarantee of server delivery. Blocked calls are not retried/spammed.
-    local ok, err = pcall(sender, content, channel, nil, recipient)
-    if not ok then return false, tostring(err) end
+    local ok, result = pcall(sender, content, channel, nil, recipient)
+    if not ok then return false, tostring(result) end
+    if result == false then return false, "Chat API returned false" end
     return true
 end
 
@@ -114,7 +115,6 @@ function Greeter:TryWelcomeWhisper(member)
 end
 
 -- Keep the original dedicated guild-chat handler, but audit delivery attempts.
-local originalSend = Greeter.Send
 function Greeter:Send(kind, member, content)
     local channel = self.db.channels[kind] or "LOCAL"
     if channel == "LOCAL" then
@@ -197,6 +197,7 @@ function Greeter:ResetOptions()
     db.leaderOnly = true
     db.paused = false
     db.randomMessages = true
+    if db.welcomeRotation then db.welcomeRotation.remaining = {} end
     db.discordEnabled = false
     db.welcomeWhisperEnabled = false
     db.quietEnabled = false
