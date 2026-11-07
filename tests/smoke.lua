@@ -279,4 +279,81 @@ addon.minimapButton.scripts.OnUpdate(addon.minimapButton)
 addon.minimapButton.scripts.OnDragStop(addon.minimapButton)
 assert(type(addon.db.minimapAngle) == "number")
 
-print("FORGE GuildGreeter: roster, greeting, spam, editable UI, rank, whisper, pause and quiet-hours smoke tests passed.")
+-- v0.2 quality: activity is local, bounded, and delivery is not assumed.
+assert(addon.db.onlineCooldownHours == 24)
+assert(#addon.db.activity <= 10)
+assert(addon:StatusText() == "ACTIVE" or addon:StatusText():find("INACTIVE"))
+
+-- Preview never sends chat or consumes the welcome rotation.
+local outBefore = #outgoing
+local pending = #addon.db.welcomeRotation.remaining
+local previousIndex = addon.db.welcomeRotation.lastIndex
+addon:PreviewSelected("welcome", "Hi {player}, welcome to {guild}!")
+assert(#outgoing == outBefore and #addon.db.welcomeRotation.remaining == pending)
+assert(addon.db.welcomeRotation.lastIndex == previousIndex)
+assert(addon.db.activity[1].status == "PREVIEW")
+
+-- Send Test uses an explicit button action; it is not an automatic event.
+assert(addon:SendTest("welcome", "Hi {player}!"))
+assert(#outgoing == outBefore + 1)
+assert(outgoing[#outgoing].message:find("[TEST]", 1, true))
+assert(addon.db.activity[1].status == "TEST REQUESTED")
+
+-- A blocked API is observable; no fake "delivered" state.
+local sender = C_ChatInfo.SendChatMessage
+C_ChatInfo.SendChatMessage = function() error("protected chat operation") end
+assert(not addon:SendTest("welcome", "Hello!"))
+assert(addon:StatusText() == "CHAT BLOCKED")
+assert(addon.db.activity[1].status == "BLOCKED")
+C_ChatInfo.SendChatMessage = function() return false end
+assert(not addon:SendTest("welcome", "Hello!"))
+assert(addon:StatusText() == "CHAT BLOCKED")
+C_ChatInfo.SendChatMessage = sender
+assert(addon:SendTest("welcome", "Hello!"))
+assert(addon:StatusText() == "ACTIVE")
+
+-- Personal whisper is optional and limited to one request/player/day.
+local guest = {name = "WhisperGuest", class = "Paladin", level = 17, rank = "Member"}
+addon.db.channels.welcome = "GUILD"
+addon.db.welcomeWhisperEnabled = true
+local initial = #outgoing
+assert(addon:Send("welcome", guest, "Welcome!"))
+assert(#outgoing == initial + 2)
+assert(outgoing[#outgoing].channel == "WHISPER")
+assert(outgoing[#outgoing].target == "WhisperGuest")
+assert(addon:Send("welcome", guest, "Welcome again!"))
+assert(#outgoing == initial + 3, "Whisper cooldown must suppress duplicate")
+addon.db.welcomeWhisperEnabled = false
+assert(#addon.db.activity == 10, "Last-ten activity history must be capped")
+
+-- Different cooldown policies for welcome and online messages.
+now = now + 50
+addon.db.lastSent["online:hourguest"] = now - 3600
+addon.db.onlineCooldownHours = 24
+addon:Queue("online", {name = "HourGuest", online = true})
+assert(#addon.queue == 0, "Online greeting should be limited to once per 24h")
+addon.db.onlineCooldownHours = 1
+addon:Queue("online", {name = "HourGuest", online = true})
+assert(#addon.queue == 1, "Shorter custom online cooldown should work")
+addon.queue, addon.queuedKeys = {}, {}
+
+-- Edited messages and settings can be restored independently.
+assert(addon:RestoreTemplate("welcome", 1))
+assert(addon.db.messages.welcome[1] == addon.defaults.welcome[1])
+assert(addon:RestoreTemplate("online", 1))
+assert(addon.db.messages.online[1] == addon.defaults.online[1])
+local originalFive = {}
+for i = 1, 5 do originalFive[i] = addon.db.messages.welcome[i] end
+addon.db.onlineCooldownHours = 1
+addon.db.enabled.welcome = false
+addon.ui.resetButton.scripts.OnClick()
+assert(not addon.db.enabled.welcome, "First reset click must only ask for confirmation")
+addon.ui.resetButton.scripts.OnClick()
+assert(addon.db.enabled.welcome and addon.db.onlineCooldownHours == 24)
+for i = 1, 5 do
+    assert(addon.db.messages.welcome[i] == originalFive[i],
+        "Options reset should never delete customized greetings")
+end
+
+print("FORGE GuildGreeter v0.2: mock checks for tests, status, cooldowns, whispers, resets and activity passed.")
+
