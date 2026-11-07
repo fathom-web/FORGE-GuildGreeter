@@ -168,6 +168,8 @@ function Greeter:CreateUI()
         Greeter:RefreshUI()
     end)
     local statusLabel = Label(p, "", 20, -166, "GameFontHighlightSmall", C.gold)
+    statusLabel:SetWidth(470)
+    statusLabel:SetWordWrap(false)
 
     local tabs = {}
     local tabIDs = { "welcome", "online", "settings", "about" }
@@ -237,8 +239,16 @@ function Greeter:CreateUI()
     end)
     local uniqueHint = Label(editor, "5 UNIQUE WELCOMES  -  NO REPEATS UNTIL ALL FIVE PLAY",
         0, -201, "GameFontHighlightSmall", C.gold)
-    Label(editor, "LIVE PREVIEW  -  NOT SENT TO GUILD CHAT", 0, -220, "GameFontNormalSmall", C.gold)
-    local previewText = Label(editor, "", 0, -246, "GameFontHighlightSmall")
+    local restoreOnlineBtn = Button(editor, "RESTORE ORIGINAL", 306, -199, 166, 33, function()
+        local kind = Greeter:CurrentKind()
+        if kind ~= "online" then return end
+        local ok, err = Greeter:RestoreTemplate(kind, Greeter.ui.index[kind])
+        if not ok then Greeter:Print(err); return end
+        Greeter:LoadSelectedMessage()
+        Greeter:Print("Original online greeting restored.")
+    end)
+    Label(editor, "LIVE PREVIEW  -  NOT SENT TO GUILD CHAT", 0, -243, "GameFontNormalSmall", C.gold)
+    local previewText = Label(editor, "", 0, -268, "GameFontHighlightSmall")
     previewText:SetWidth(466)
     previewText:SetJustifyH("LEFT")
     previewText:SetWordWrap(true)
@@ -382,7 +392,8 @@ function Greeter:CreateUI()
         tabs = tabs, statusLabel = statusLabel, indexLabel = indexLabel,
         messageEdit = messageEdit, channelBtn = channelBtn,
         addButton = addButton, deleteButton = deleteButton,
-        uniqueHint = uniqueHint, previewText = previewText,
+        uniqueHint = uniqueHint, restoreOnlineBtn = restoreOnlineBtn,
+        previewText = previewText,
         leaderBtn = leaderBtn, randomBtn = randomBtn, quietBtn = quietBtn,
         onlineCdBtn = onlineCdBtn, cdBtn = cdBtn, gapBtn = gapBtn,
         limitBtn = limitBtn, startBtn = startBtn, endBtn = endBtn,
@@ -449,6 +460,7 @@ function Greeter:UpdatePanel()
     u.addButton.label:SetText(kind == "welcome" and "RESTORE" or "ADD")
     u.deleteButton.label:SetText(kind == "welcome" and "5 SLOTS" or "DELETE")
     u.uniqueHint:SetShown(isEditor and kind == "welcome")
+    u.restoreOnlineBtn:SetShown(isEditor and kind == "online")
     if isEditor then
         u.indexLabel:SetText(string.upper(kind) .. " MESSAGE  " ..
             u.index[kind] .. " / " .. #self.db.messages[kind])
