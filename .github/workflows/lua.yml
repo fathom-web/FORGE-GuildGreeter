@@ -1,0 +1,26 @@
+name: GuildGreeter Lua checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lua-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Lua 5.1
+        run: sudo apt-get update && sudo apt-get install -y lua5.1
+      - name: Syntax checks
+        run: |
+          set -euo pipefail
+          luac5.1 -p ForgeGuildGreeter/Core.lua
+          luac5.1 -p ForgeGuildGreeter/UI.lua
+          luac5.1 -p ForgeGuildGreeter/Minimap.lua
+          luac5.1 -p tests/smoke.lua
+      - name: Run mocked-client smoke tests
+        run: lua5.1 tests/smoke.lua
