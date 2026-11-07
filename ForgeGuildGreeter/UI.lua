@@ -336,7 +336,11 @@ function Greeter:UpdatePanel()
     if u.tab == "settings" then u.settings:Show() else u.settings:Hide() end
     if u.tab == "about" then u.about:Show() else u.about:Hide() end
     for tab, button in pairs(u.tabs) do
-        button:SetBackdropBorderColor(tab == u.tab and 0.9 or unpack(C.edge))
+        if tab == u.tab then
+            button:SetBackdropBorderColor(0.9, 0.68, 0.34, 1)
+        else
+            button:SetBackdropBorderColor(unpack(C.edge))
+        end
     end
     if isEditor then
         u.indexLabel:SetText(string.upper(kind) .. " MESSAGE  " ..
