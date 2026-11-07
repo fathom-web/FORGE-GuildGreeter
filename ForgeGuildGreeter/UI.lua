@@ -373,23 +373,56 @@ function Greeter:CreateUI()
         0, -318, "GameFontHighlightSmall", C.gold)
 
     self.ui = {
-        tab = "welcome",
+        tab = "welcome", subTab = "safety", confirmReset = nil,
         index = { welcome = 1, online = 1 },
         editor = editor, settings = settings, about = about,
+        policyPage = policyPage, messagePage = messagePage,
+        behaviorTab = behaviorTab, messageTab = messageTab,
         welcomeToggle = welcomeToggle, onlineToggle = onlineToggle,
         tabs = tabs, statusLabel = statusLabel, indexLabel = indexLabel,
         messageEdit = messageEdit, channelBtn = channelBtn,
         addButton = addButton, deleteButton = deleteButton,
-        uniqueHint = uniqueHint,
-        previewText = previewText, leaderBtn = leaderBtn, randomBtn = randomBtn,
-        discordBtn = discordBtn, quietBtn = quietBtn, cdBtn = cdBtn,
-        gapBtn = gapBtn, limitBtn = limitBtn, startBtn = startBtn, endBtn = endBtn,
-        discordEdit = discordEdit,
+        uniqueHint = uniqueHint, previewText = previewText,
+        leaderBtn = leaderBtn, randomBtn = randomBtn, quietBtn = quietBtn,
+        onlineCdBtn = onlineCdBtn, cdBtn = cdBtn, gapBtn = gapBtn,
+        limitBtn = limitBtn, startBtn = startBtn, endBtn = endBtn,
+        resetButton = resetButton, discordBtn = discordBtn,
+        whisperBtn = whisperBtn, discordEdit = discordEdit,
+        whisperEdit = whisperEdit, activityRows = activityRows,
     }
     self.frame = p
     self:LoadSelectedMessage()
     self:UpdatePanel()
     p:Hide()
+end
+
+function Greeter:UpdateStatus()
+    local u = self.ui
+    if not u or not u.statusLabel or not self.db then return end
+    local line = "STATUS: " .. self:StatusText()
+    local recent = self.db.activity and self.db.activity[1]
+    if recent then
+        local player = recent.player or ""
+        if #player > 18 then player = player:sub(1, 18) end
+        line = line .. "  |  LAST: " .. recent.status .. " " .. player
+    end
+    u.statusLabel:SetText(line)
+end
+
+function Greeter:UpdateActivity()
+    local u = self.ui
+    if not u or not u.activityRows or not self.db then return end
+    for i, label in ipairs(u.activityRows) do
+        local entry = self.db.activity[i]
+        if entry then
+            local clock = type(date) == "function" and date("%H:%M", entry.at) or "--:--"
+            local description = entry.player .. " - " .. entry.message
+            if #description > 48 then description = description:sub(1, 45) .. "..." end
+            label:SetText(clock .. "  " .. entry.status .. "  " .. description)
+        else
+            label:SetText(i == 1 and "No activity yet. Waiting for your first guild event." or "")
+        end
+    end
 end
 
 function Greeter:UpdatePanel()
@@ -399,46 +432,62 @@ function Greeter:UpdatePanel()
         (self.db.enabled.welcome and "ENABLED" or "DISABLED"))
     u.onlineToggle.label:SetText("ONLINE GREETINGS\n" ..
         (self.db.enabled.online and "ENABLED" or "DISABLED"))
-    local can, reason = self:CanAnnounce()
-    u.statusLabel:SetText(self.ready and (can and "GUILD ROSTER READY  -  ACTIVE"
-        or "GUILD ROSTER READY  -  " .. tostring(reason))
-        or "WAITING FOR GUILD ROSTER...")
+    self:UpdateStatus()
     local kind = self:CurrentKind()
     local isEditor = u.tab == "welcome" or u.tab == "online"
     if isEditor then u.editor:Show() else u.editor:Hide() end
     if u.tab == "settings" then u.settings:Show() else u.settings:Hide() end
     if u.tab == "about" then u.about:Show() else u.about:Hide() end
     for tab, button in pairs(u.tabs) do
-        if tab == u.tab then
-            button:SetBackdropBorderColor(0.9, 0.68, 0.34, 1)
-        else
-            button:SetBackdropBorderColor(unpack(C.edge))
-        end
+        if tab == u.tab then button:SetBackdropBorderColor(0.9, 0.68, 0.34, 1)
+        else button:SetBackdropBorderColor(unpack(C.edge)) end
     end
-    u.addButton:SetEnabled(isEditor and kind ~= "welcome")
+    u.addButton:SetEnabled(isEditor)
     u.deleteButton:SetEnabled(isEditor and kind ~= "welcome")
-    u.addButton:SetAlpha(kind == "welcome" and 0.4 or 1)
+    u.addButton:SetAlpha(isEditor and 1 or 0.4)
     u.deleteButton:SetAlpha(kind == "welcome" and 0.4 or 1)
-    u.addButton.label:SetText(kind == "welcome" and "5 FIXED SLOTS" or "ADD NEW")
+    u.addButton.label:SetText(kind == "welcome" and "RESTORE" or "ADD")
+    u.deleteButton.label:SetText(kind == "welcome" and "5 SLOTS" or "DELETE")
     u.uniqueHint:SetShown(isEditor and kind == "welcome")
     if isEditor then
         u.indexLabel:SetText(string.upper(kind) .. " MESSAGE  " ..
             u.index[kind] .. " / " .. #self.db.messages[kind])
-        u.channelBtn.label:SetText("SEND VIA: " .. self.db.channels[kind] ..
-            "  (CLICK TO CHANGE)")
+        u.channelBtn.label:SetText("SEND VIA: " .. self.db.channels[kind])
         self:UpdatePreview()
     end
+
+    if u.subTab == "messages" then
+        u.messagePage:Show(); u.policyPage:Hide()
+    else
+        u.policyPage:Show(); u.messagePage:Hide()
+    end
+    u.behaviorTab:SetBackdropBorderColor(u.subTab == "safety"
+        and 0.9 or 0.43, u.subTab == "safety" and 0.68 or 0.34,
+        u.subTab == "safety" and 0.34 or 0.22, 1)
+    u.messageTab:SetBackdropBorderColor(u.subTab == "messages"
+        and 0.9 or 0.43, u.subTab == "messages" and 0.68 or 0.34,
+        u.subTab == "messages" and 0.34 or 0.22, 1)
+
     u.leaderBtn.label:SetText("GUILD MASTER ONLY: " ..
         (self.db.leaderOnly and "ON" or "OFF"))
-    u.randomBtn.label:SetText("RANDOM MESSAGES: " ..
+    u.randomBtn.label:SetText("SHUFFLED WELCOMES: " ..
         (self.db.randomMessages and "ON" or "OFF"))
-    u.discordBtn.label:SetText("DISCORD REMINDER: " ..
-        (self.db.discordEnabled and "ON" or "OFF"))
     u.quietBtn.label:SetText("QUIET HOURS: " ..
         (self.db.quietEnabled and "ON" or "OFF"))
-    u.cdBtn.label:SetText("PLAYER COOLDOWN: " .. self.db.cooldownMinutes .. "m")
+    u.onlineCdBtn.label:SetText("ONLINE COOLDOWN: " ..
+        self.db.onlineCooldownHours .. "h")
+    u.cdBtn.label:SetText("WELCOME COOLDOWN: " .. self.db.cooldownMinutes .. "m")
     u.gapBtn.label:SetText("CHAT SPACING: " .. self.db.spacingSeconds .. "s")
     u.limitBtn.label:SetText("MAX / 5 MINUTES: " .. self.db.maxPerFiveMinutes)
     u.startBtn.label:SetText("FROM " .. string.format("%02d:00", self.db.quietStart))
     u.endBtn.label:SetText("TO " .. string.format("%02d:00", self.db.quietEnd))
+    u.discordBtn.label:SetText("DISCORD REMINDER: " ..
+        (self.db.discordEnabled and "ON" or "OFF"))
+    u.whisperBtn.label:SetText("WELCOME WHISPER: " ..
+        (self.db.welcomeWhisperEnabled and "ON" or "OFF"))
+    u.resetButton.label:SetText(u.confirmReset and self:Now() <= u.confirmReset
+        and "CONFIRM RESET?  (KEEPS YOUR MESSAGES)"
+        or "RESTORE DEFAULT SETTINGS")
+
+    self:UpdateActivity()
 end
