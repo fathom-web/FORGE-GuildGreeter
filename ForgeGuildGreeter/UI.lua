@@ -248,78 +248,129 @@ function Greeter:CreateUI()
         "  |  R-click minimap: pause", 20, -588)
     footer:SetTextColor(0.55, 0.55, 0.52)
 
+    -- Advanced tools are behind one tab, split into just two small pages.
     local settings = CreateFrame("Frame", nil, p)
-    settings:SetSize(472, 335)
-    settings:SetPoint("TOPLEFT", p, "TOPLEFT", 19, -239)
-    local leaderBtn = Button(settings, "", 0, 0, 230, 42, function()
+    settings:SetSize(472, 330)
+    settings:SetPoint("TOPLEFT", p, "TOPLEFT", 19, -238)
+    local subTab = "safety"
+    local policyPage = CreateFrame("Frame", nil, settings)
+    policyPage:SetSize(472, 285)
+    policyPage:SetPoint("TOPLEFT", settings, "TOPLEFT", 0, -44)
+    local messagePage = CreateFrame("Frame", nil, settings)
+    messagePage:SetSize(472, 285)
+    messagePage:SetPoint("TOPLEFT", settings, "TOPLEFT", 0, -44)
+    local behaviorTab = Button(settings, "BEHAVIOR", 0, 0, 230, 36, function()
+        Greeter.ui.subTab = "safety"; Greeter:UpdatePanel()
+    end)
+    local messageTab = Button(settings, "MESSAGES", 242, 0, 230, 36, function()
+        Greeter.ui.subTab = "messages"; Greeter:UpdatePanel()
+    end)
+    local leaderBtn = Button(policyPage, "", 0, 0, 230, 42, function()
         Greeter.db.leaderOnly = not Greeter.db.leaderOnly; Greeter:RefreshUI()
     end)
-    local randomBtn = Button(settings, "", 242, 0, 230, 42, function()
+    local randomBtn = Button(policyPage, "", 242, 0, 230, 42, function()
         Greeter.db.randomMessages = not Greeter.db.randomMessages
-        -- Reseed the next round after switching modes, without repeating last.
         Greeter.db.welcomeRotation.remaining = {}
         Greeter:RefreshUI()
     end)
-    local discordBtn = Button(settings, "", 0, -54, 230, 42, function()
-        Greeter.db.discordEnabled = not Greeter.db.discordEnabled; Greeter:RefreshUI()
-    end)
-    local quietBtn = Button(settings, "", 242, -54, 230, 42, function()
+    local quietBtn = Button(policyPage, "", 0, -54, 230, 42, function()
         Greeter.db.quietEnabled = not Greeter.db.quietEnabled; Greeter:RefreshUI()
     end)
-    local cdBtn = Button(settings, "", 0, -108, 230, 42, function()
+    local onlineCdBtn = Button(policyPage, "", 242, -54, 230, 42, function()
+        Greeter.db.onlineCooldownHours =
+            Cycle(Greeter.onlineCooldownOptions, Greeter.db.onlineCooldownHours)
+        Greeter:RefreshUI()
+    end)
+    local cdBtn = Button(policyPage, "", 0, -108, 230, 42, function()
         Greeter.db.cooldownMinutes = Cycle(Greeter.cooldowns, Greeter.db.cooldownMinutes)
         Greeter:RefreshUI()
     end)
-    local gapBtn = Button(settings, "", 242, -108, 230, 42, function()
+    local gapBtn = Button(policyPage, "", 242, -108, 230, 42, function()
         Greeter.db.spacingSeconds = Cycle(Greeter.spacings, Greeter.db.spacingSeconds)
         Greeter:RefreshUI()
     end)
-    local limitBtn = Button(settings, "", 0, -162, 230, 42, function()
+    local limitBtn = Button(policyPage, "", 0, -162, 230, 42, function()
         Greeter.db.maxPerFiveMinutes = Cycle(Greeter.limits, Greeter.db.maxPerFiveMinutes)
         Greeter:RefreshUI()
     end)
-    local startBtn = Button(settings, "", 242, -162, 110, 42, function()
+    local startBtn = Button(policyPage, "", 242, -162, 110, 42, function()
         Greeter.db.quietStart = (Greeter.db.quietStart + 1) % 24
         Greeter:RefreshUI()
     end)
-    local endBtn = Button(settings, "", 362, -162, 110, 42, function()
+    local endBtn = Button(policyPage, "", 362, -162, 110, 42, function()
         Greeter.db.quietEnd = (Greeter.db.quietEnd + 1) % 24
         Greeter:RefreshUI()
     end)
-    Label(settings, "DISCORD REMINDER (APPENDED TO WELCOME IF ENABLED)", 0, -219,
+    Label(policyPage, "Quiet hours use the WoW server clock. Auto chat may be restricted.",
+        0, -220, "GameFontHighlightSmall", C.muted)
+    local resetButton = Button(policyPage, "RESTORE DEFAULT SETTINGS", 0, -257, 472, 37, function()
+        local u = Greeter.ui
+        local now = Greeter:Now()
+        if not u.confirmReset or now > u.confirmReset then
+            u.confirmReset = now + 15
+            Greeter:Print("Click CONFIRM RESET within 15 seconds. Your texts will be kept.")
+        else
+            u.confirmReset = nil
+            Greeter:ResetOptions()
+            u.discordEdit:SetText(Greeter.db.discordText)
+            u.whisperEdit:SetText(Greeter.db.welcomeWhisperText)
+        end
+        Greeter:UpdatePanel()
+    end)
+
+    local discordBtn = Button(messagePage, "", 0, 0, 230, 42, function()
+        Greeter.db.discordEnabled = not Greeter.db.discordEnabled; Greeter:RefreshUI()
+    end)
+    local whisperBtn = Button(messagePage, "", 242, 0, 230, 42, function()
+        Greeter.db.welcomeWhisperEnabled = not Greeter.db.welcomeWhisperEnabled
+        Greeter:RefreshUI()
+    end)
+    Label(messagePage, "DISCORD REMINDER (APPENDED TO PUBLIC WELCOME)", 0, -56,
         "GameFontNormalSmall", C.gold)
-    local discordEdit = Input(settings, 0, -241, 472, 100)
+    local discordEdit = Input(messagePage, 0, -76, 472, 100)
     discordEdit:SetText(self.db.discordText)
     local function SaveDiscord()
         Greeter.db.discordText = (discordEdit:GetText() or ""):match("^%s*(.-)%s*$")
         Greeter:RefreshUI()
         discordEdit:ClearFocus()
-        Greeter:Print("Discord text saved.")
+        Greeter:Print("Discord reminder saved.")
     end
     discordEdit:SetScript("OnEnterPressed", SaveDiscord)
-    Button(settings, "SAVE DISCORD MESSAGE", 0, -286, 472, 38, SaveDiscord)
-
-    local about = CreateFrame("Frame", nil, p)
-    about:SetSize(472, 320)
-    about:SetPoint("TOPLEFT", p, "TOPLEFT", 19, -239)
-    Label(about, "GUILD GREETINGS, WITHOUT THE GUILD SPAM.", 0, 0,
-        "GameFontNormal", C.gold)
-    local lines = {
-        "Welcomes freshly joined guild members.",
-        "Greets members when they switch from offline to online.",
-        "Never greets the entire roster when you log in.",
-        "Only Guild Master broadcasts by default.",
-        "Separate channels and custom templates for both types.",
-        "Quiet hours use the server's in-game clock.",
-        "Local channel is a safe way to preview without chatting.",
-        "No cloud, no tracking, no external addon dependencies.",
-        "",
-        "Commands: /fgreet  /fgreet status  /fgreet help",
-        "Website: wow.novyxforge.com",
-    }
-    for i, line in ipairs(lines) do
-        Label(about, line, 0, -28 - (i - 1) * 26)
+    Button(messagePage, "SAVE DISCORD REMINDER", 0, -117, 472, 33, SaveDiscord)
+    Label(messagePage, "PERSONAL WELCOME WHISPER (NEW MEMBERS ONLY)", 0, -161,
+        "GameFontNormalSmall", C.gold)
+    local whisperEdit = Input(messagePage, 0, -181, 472, 220)
+    whisperEdit:SetText(self.db.welcomeWhisperText)
+    local function SaveWhisper()
+        local value = (whisperEdit:GetText() or ""):match("^%s*(.-)%s*$")
+        if value == "" then Greeter:Print("Whisper message cannot be blank."); return end
+        Greeter.db.welcomeWhisperText = value
+        Greeter:RefreshUI()
+        whisperEdit:ClearFocus()
+        Greeter:Print("Personal welcome whisper saved.")
     end
+    whisperEdit:SetScript("OnEnterPressed", SaveWhisper)
+    Button(messagePage, "SAVE WELCOME WHISPER", 0, -222, 472, 33, SaveWhisper)
+    Label(messagePage, "Whisper is optional, off by default and limited to one per player/day.",
+        0, -271, "GameFontHighlightSmall", C.muted)
+
+    -- Activity stays intentionally tiny: last 10 local events and send attempts.
+    local about = CreateFrame("Frame", nil, p)
+    about:SetSize(472, 330)
+    about:SetPoint("TOPLEFT", p, "TOPLEFT", 19, -238)
+    Label(about, "RECENT ACTIVITY  -  MOST RECENT FIRST", 0, 0,
+        "GameFontNormal", C.gold)
+    Label(about, "REQUESTED = chat API called; not proof of delivery.", 0, -23,
+        "GameFontHighlightSmall", C.muted)
+    local activityRows = {}
+    for i = 1, 10 do
+        activityRows[i] = Label(about, "", 0, -50 - (i - 1) * 26,
+            "GameFontHighlightSmall", C.muted)
+        activityRows[i]:SetWidth(464)
+        activityRows[i]:SetWordWrap(false)
+    end
+    Label(about, "NOVYX FORGE  |  wow.novyxforge.com  |  Auto-send requires in-game test",
+        0, -318, "GameFontHighlightSmall", C.gold)
 
     self.ui = {
         tab = "welcome",
