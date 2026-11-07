@@ -22,7 +22,7 @@ jobs:
           for f in ForgeGuildGreeter/ForgeGuildGreeter.toc ForgeGuildGreeter/ForgeGuildGreeter_Forever.toc ForgeGuildGreeter/Core.lua ForgeGuildGreeter/UI.lua ForgeGuildGreeter/Minimap.lua; do
             test -s "$f"
           done
-          grep -q '## Version: 0.1.0' ForgeGuildGreeter/ForgeGuildGreeter.toc
+          grep -q '## Version: 0.1.1' ForgeGuildGreeter/ForgeGuildGreeter.toc
       - name: Create ZIP
         run: |
           set -euo pipefail
