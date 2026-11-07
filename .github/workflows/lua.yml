@@ -19,6 +19,7 @@ jobs:
         run: |
           set -euo pipefail
           luac5.1 -p ForgeGuildGreeter/Core.lua
+          luac5.1 -p ForgeGuildGreeter/Quality.lua
           luac5.1 -p ForgeGuildGreeter/UI.lua
           luac5.1 -p ForgeGuildGreeter/Minimap.lua
           luac5.1 -p tests/smoke.lua
