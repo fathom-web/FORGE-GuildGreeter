@@ -196,7 +196,7 @@ function Greeter:CreateUI()
     Button(editor, "SAVE MESSAGE", 0, -109, 149, 38, function()
         if Greeter:CommitDraft() then Greeter:Print("Message saved.") end
     end)
-    Button(editor, "ADD NEW", 161, -109, 149, 38, function()
+    local addButton = Button(editor, "ADD NEW", 161, -109, 149, 38, function()
         if not Greeter:CommitDraft() then return end
         local kind = Greeter:CurrentKind()
         local starter = kind == "welcome" and "Welcome {player} to {guild}!" or "Welcome back, {player}!"
@@ -206,7 +206,7 @@ function Greeter:CreateUI()
         Greeter:LoadSelectedMessage()
         Greeter:UpdatePanel()
     end)
-    Button(editor, "DELETE", 322, -109, 150, 38, function()
+    local deleteButton = Button(editor, "DELETE", 322, -109, 150, 38, function()
         local kind = Greeter:CurrentKind()
         local ok, err = Greeter:DeleteMessage(kind, Greeter.ui.index[kind])
         if not ok then Greeter:Print(err); return end
@@ -220,6 +220,8 @@ function Greeter:CreateUI()
         Greeter.db.channels[kind] = Cycle(Greeter.channels, Greeter.db.channels[kind])
         Greeter:RefreshUI()
     end)
+    local uniqueHint = Label(editor, "5 UNIQUE WELCOMES  -  NO REPEATS UNTIL ALL FIVE PLAY",
+        0, -201, "GameFontHighlightSmall", C.gold)
     Label(editor, "LIVE PREVIEW  -  NOT SENT TO GUILD CHAT", 0, -220, "GameFontNormalSmall", C.gold)
     local previewText = Label(editor, "", 0, -246, "GameFontHighlightSmall")
     previewText:SetWidth(466)
@@ -238,7 +240,10 @@ function Greeter:CreateUI()
         Greeter.db.leaderOnly = not Greeter.db.leaderOnly; Greeter:RefreshUI()
     end)
     local randomBtn = Button(settings, "", 242, 0, 230, 42, function()
-        Greeter.db.randomMessages = not Greeter.db.randomMessages; Greeter:RefreshUI()
+        Greeter.db.randomMessages = not Greeter.db.randomMessages
+        -- Reseed the next round after switching modes, without repeating last.
+        Greeter.db.welcomeRotation.remaining = {}
+        Greeter:RefreshUI()
     end)
     local discordBtn = Button(settings, "", 0, -54, 230, 42, function()
         Greeter.db.discordEnabled = not Greeter.db.discordEnabled; Greeter:RefreshUI()
@@ -308,6 +313,8 @@ function Greeter:CreateUI()
         welcomeToggle = welcomeToggle, onlineToggle = onlineToggle,
         tabs = tabs, statusLabel = statusLabel, indexLabel = indexLabel,
         messageEdit = messageEdit, channelBtn = channelBtn,
+        addButton = addButton, deleteButton = deleteButton,
+        uniqueHint = uniqueHint,
         previewText = previewText, leaderBtn = leaderBtn, randomBtn = randomBtn,
         discordBtn = discordBtn, quietBtn = quietBtn, cdBtn = cdBtn,
         gapBtn = gapBtn, limitBtn = limitBtn, startBtn = startBtn, endBtn = endBtn,
@@ -342,6 +349,12 @@ function Greeter:UpdatePanel()
             button:SetBackdropBorderColor(unpack(C.edge))
         end
     end
+    u.addButton:SetEnabled(isEditor and kind ~= "welcome")
+    u.deleteButton:SetEnabled(isEditor and kind ~= "welcome")
+    u.addButton:SetAlpha(kind == "welcome" and 0.4 or 1)
+    u.deleteButton:SetAlpha(kind == "welcome" and 0.4 or 1)
+    u.addButton.label:SetText(kind == "welcome" and "5 FIXED SLOTS" or "ADD NEW")
+    u.uniqueHint:SetShown(isEditor and kind == "welcome")
     if isEditor then
         u.indexLabel:SetText(string.upper(kind) .. " MESSAGE  " ..
             u.index[kind] .. " / " .. #self.db.messages[kind])
