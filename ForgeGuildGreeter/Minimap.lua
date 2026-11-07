@@ -61,6 +61,9 @@ function Greeter:CreateMinimapButton()
     b:SetScript("OnClick", function(_, click)
         if click == "RightButton" then
             Greeter.db.paused = not Greeter.db.paused
+            if Greeter.db.paused then
+                Greeter.queue, Greeter.queuedKeys = {}, {}
+            end
             Greeter:RefreshUI()
             Greeter:Print(Greeter.db.paused and "Greetings PAUSED." or "Greetings RESUMED.")
         else
