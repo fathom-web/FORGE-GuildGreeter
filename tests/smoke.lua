@@ -38,15 +38,18 @@ Widget.__index = function(self, key)
     return rawget(Widget, key) or function() end
 end
 function Widget:SetScript(name, handler)
-    self.scripts = self.scripts or {}
-    self.scripts[name] = handler
+    local scripts = rawget(self, "scripts") or {}
+    rawset(self, "scripts", scripts)
+    scripts[name] = handler
 end
 function Widget:RegisterEvent(name)
-    self.events = self.events or {}
-    self.events[name] = true
+    local events = rawget(self, "events") or {}
+    rawset(self, "events", events)
+    events[name] = true
 end
 function Widget:UnregisterEvent(name)
-    if self.events then self.events[name] = nil end
+    local events = rawget(self, "events")
+    if events then events[name] = nil end
 end
 function Widget:UnregisterAllEvents()
     self.events = {}
@@ -55,8 +58,9 @@ function Widget:CreateTexture() return setmetatable({}, Widget) end
 function Widget:CreateFontString() return setmetatable({}, Widget) end
 function Widget:SetText(value)
     self.text = value
-    if self.scripts and self.scripts.OnTextChanged then
-        self.scripts.OnTextChanged(self)
+    local scripts = rawget(self, "scripts")
+    if scripts and scripts.OnTextChanged then
+        scripts.OnTextChanged(self)
     end
 end
 function Widget:GetText() return self.text or "" end
