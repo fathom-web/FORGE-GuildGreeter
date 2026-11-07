@@ -210,7 +210,6 @@ function Greeter:CreateUI()
 
     local addButton = Button(editor, "ADD NEW", 242, -163, 110, 37, function()
         local kind = Greeter:CurrentKind()
-        if not Greeter:CommitDraft() then return end
         if kind == "welcome" then
             local ok, err = Greeter:RestoreTemplate(kind, Greeter.ui.index[kind])
             if not ok then Greeter:Print(err); return end
@@ -218,6 +217,7 @@ function Greeter:CreateUI()
             Greeter:Print("Original welcome message restored.")
             return
         end
+        if not Greeter:CommitDraft() then return end
         local ok, index = Greeter:AddMessage(kind, "Welcome back, {player}!")
         if not ok then Greeter:Print(index); return end
         Greeter.ui.index[kind] = index
