@@ -1,0 +1,12 @@
+## Interface: 16001
+## Title: FORGE GuildGreeter
+## Notes: Custom welcome and login greetings for your guild. By Novyx Forge.
+## Author: Novyx Forge
+## Version: 0.1.0
+## SavedVariables: ForgeGuildGreeterDB
+## IconTexture: Interface\Icons\INV_Letter_15
+## X-Website: https://wow.novyxforge.com
+
+Core.lua
+UI.lua
+Minimap.lua
