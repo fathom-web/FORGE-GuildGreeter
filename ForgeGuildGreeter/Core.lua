@@ -2,7 +2,7 @@ local addonName, ns = ...
 local Greeter = {}
 ns.Greeter = Greeter
 
-Greeter.version = "0.1.1"
+Greeter.version = "0.2.0"
 Greeter.brand = "NOVYX FORGE"
 Greeter.channels = { "GUILD", "WHISPER", "OFFICER", "LOCAL" }
 Greeter.cooldowns = { 5, 15, 30, 60, 120 }
@@ -218,7 +218,8 @@ function Greeter:Queue(kind, member)
     local key = kind .. ":" .. SafeName(member.name)
     local last = self.db.lastSent[key]
     local now = self:Now()
-    if type(last) == "number" and now - last < self.db.cooldownMinutes * 60 then return end
+    local seconds = kind == "online" and self.db.onlineCooldownHours * 3600 or self.db.cooldownMinutes * 60
+    if type(last) == "number" and now - last < seconds then return end
     if self.queuedKeys[key] then return end
     self.queue[#self.queue + 1] = {
         kind = kind, member = member, key = key, enqueued = now,
@@ -307,8 +308,16 @@ function Greeter:ProcessRoster()
     local oldCount, newCount = 0, 0
     for _ in pairs(old) do oldCount = oldCount + 1 end
     for _ in pairs(fresh) do newCount = newCount + 1 end
-    -- Discard partial roster snapshots to avoid false joins on next update.
-    if oldCount >= 5 and newCount < math.floor(oldCount / 2) then return end
+    -- Ignore incomplete/erratic roster snapshots: a temporary list reload
+    -- must not be mistaken for guildmates leaving and rejoining.
+    if oldCount >= 5 and newCount < math.floor(oldCount * 0.8) then return end
+    -- A sudden bulk increase usually indicates that the roster was still
+    -- loading. Rebaseline silently instead of welcoming dozens of ghosts.
+    if newCount - oldCount > 3 then
+        self.roster = fresh
+        self:LogAction("SKIPPED", "roster", "Guild", "Large roster change; no mass greetings")
+        return
+    end
 
     for key, member in pairs(fresh) do
         local previous = old[key]
@@ -459,6 +468,7 @@ function Greeter:Initialize()
     db.quietStart = Clamp(db.quietStart, 0, 23, 23)
     db.quietEnd = Clamp(db.quietEnd, 0, 23, 8)
     db.cooldownMinutes = HasValue(self.cooldowns, db.cooldownMinutes) and db.cooldownMinutes or 30
+    if self.InitQuality then self:InitQuality() end
     db.spacingSeconds = HasValue(self.spacings, db.spacingSeconds) and db.spacingSeconds or 10
     db.maxPerFiveMinutes = HasValue(self.limits, db.maxPerFiveMinutes) and db.maxPerFiveMinutes or 3
     if type(db.minimapHidden) ~= "boolean" then db.minimapHidden = false end
