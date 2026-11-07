@@ -82,7 +82,7 @@ assert(loadfile("ForgeGuildGreeter/Core.lua"))("ForgeGuildGreeter", ns)
 assert(loadfile("ForgeGuildGreeter/UI.lua"))("ForgeGuildGreeter", ns)
 assert(loadfile("ForgeGuildGreeter/Minimap.lua"))("ForgeGuildGreeter", ns)
 local addon = assert(ns.Greeter)
-assert(addon.version == "0.1.0")
+assert(addon.version == "0.1.1")
 addon:Initialize()
 assert(requestCount >= 1)
 assert(addon.frame and addon.minimapButton)
@@ -91,6 +91,34 @@ assert(addon.db.enabled.welcome and addon.db.enabled.online)
 assert(addon.db.channels.welcome == "GUILD")
 assert(addon.db.cooldownMinutes == 30)
 assert(addon.ui.tab == "welcome")
+assert(#addon.db.messages.welcome == 5, "Exactly five welcome templates expected")
+
+-- Shuffled welcome bag must use each of the five distinct messages before
+-- repeating, including across bag boundaries. All five remain editable.
+local previous = nil
+for round = 1, 4 do
+    local seen = {}
+    for i = 1, 5 do
+        local message = addon:PickMessage("welcome")
+        assert(message and not seen[message], "Duplicate welcome in the same five-message round")
+        assert(message ~= previous, "Consecutive welcome messages must always differ")
+        seen[message] = true
+        previous = message
+    end
+    local count = 0
+    for _ in pairs(seen) do count = count + 1 end
+    assert(count == 5, "Every welcome must be used exactly once per round")
+end
+
+-- Simulating a UI reload: the persisted remaining bag must not reset.
+local lastBeforeReload = addon:PickMessage("welcome")
+local pendingBeforeReload = #addon.db.welcomeRotation.remaining
+addon.lastPicked = {}
+assert(#addon.db.welcomeRotation.remaining == pendingBeforeReload)
+local nextWelcome = addon:PickMessage("welcome")
+assert(nextWelcome ~= lastBeforeReload)
+assert(#addon.db.welcomeRotation.remaining == pendingBeforeReload - 1)
+
 
 -- Initial roster may already contain dozens online: zero greeting messages.
 addon:ProcessRoster()
@@ -133,13 +161,17 @@ assert(#addon.queue == 0, "Repeated login during cooldown should be ignored")
 
 -- Editable template library, add, delete, variables and preview.
 assert(addon:SaveMessage("welcome", 1, "Greetings {player} of {guild}!"))
-local ok, idx = addon:AddMessage("welcome", "We see {class} {player}, level {level}.")
+assert(not addon:SaveMessage("welcome", 2, "Greetings {player} of {guild}!"),
+    "Duplicate welcome templates must be rejected")
+assert(not addon:AddMessage("welcome", "Sixth welcome should be rejected"))
+assert(not addon:DeleteMessage("welcome", 1))
+local ok, idx = addon:AddMessage("online", "We see {class} {player}, level {level}.")
 assert(ok and idx == 5)
-assert(addon:Expand(addon.db.messages.welcome[idx],
+assert(addon:Expand(addon.db.messages.online[idx],
     { name = "Thrall-Realm", rank = "Raider", class = "Shaman", level = 60 })
     == "We see Shaman Thrall, level 60.")
-assert(addon:DeleteMessage("welcome", idx))
-assert(#addon.db.messages.welcome == 4)
+assert(addon:DeleteMessage("online", idx))
+assert(#addon.db.messages.welcome == 5)
 assert(not addon:SaveMessage("online", 1, ""))
 assert(not addon:DeleteMessage("welcome", 100))
 
