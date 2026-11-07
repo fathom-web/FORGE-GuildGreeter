@@ -253,7 +253,7 @@ function Greeter:CreateUI()
     previewText:SetJustifyH("LEFT")
     previewText:SetWordWrap(true)
 
-    Label(p, "VARIABLES: {player} {full} {guild} {class} {level} {rank}", 20, -559)
+    local variablesLabel = Label(p, "VARIABLES: {player} {full} {guild} {class} {level} {rank}", 20, -559)
     local footer = Label(p, "NOVYX FORGE  |  /fgreet  |  v" .. self.version ..
         "  |  R-click minimap: pause", 20, -588)
     footer:SetTextColor(0.55, 0.55, 0.52)
@@ -392,7 +392,8 @@ function Greeter:CreateUI()
         tabs = tabs, statusLabel = statusLabel, indexLabel = indexLabel,
         messageEdit = messageEdit, channelBtn = channelBtn,
         addButton = addButton, deleteButton = deleteButton,
-        uniqueHint = uniqueHint, restoreOnlineBtn = restoreOnlineBtn,
+        uniqueHint = uniqueHint, variablesLabel = variablesLabel,
+        restoreOnlineBtn = restoreOnlineBtn,
         previewText = previewText,
         leaderBtn = leaderBtn, randomBtn = randomBtn, quietBtn = quietBtn,
         onlineCdBtn = onlineCdBtn, cdBtn = cdBtn, gapBtn = gapBtn,
@@ -447,6 +448,7 @@ function Greeter:UpdatePanel()
     local kind = self:CurrentKind()
     local isEditor = u.tab == "welcome" or u.tab == "online"
     if isEditor then u.editor:Show() else u.editor:Hide() end
+    u.variablesLabel:SetShown(isEditor)
     if u.tab == "settings" then u.settings:Show() else u.settings:Hide() end
     if u.tab == "about" then u.about:Show() else u.about:Hide() end
     for tab, button in pairs(u.tabs) do
