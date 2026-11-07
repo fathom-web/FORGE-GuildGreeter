@@ -235,7 +235,9 @@ function Greeter:ProcessQueue()
     local entry = table.remove(self.queue, 1)
     self.queuedKeys[entry.key] = nil
     if now - entry.enqueued > 180 then return end
-    local message = self:Compose(entry.kind, entry.member)
+    local current = self.roster[SafeName(entry.member.name)]
+    if not current or (entry.kind == "online" and not current.online) then return end
+    local message = self:Compose(entry.kind, current)
     if not message then return end
     if self:Send(entry.kind, entry.member, message) then
         self.lastBroadcast = now
