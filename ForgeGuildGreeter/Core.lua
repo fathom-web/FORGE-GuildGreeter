@@ -78,6 +78,7 @@ end
 
 function Greeter:CanAnnounce()
     if not self:IsGuilded() then return false, "not in a guild" end
+    if self.db.paused then return false, "paused" end
     if not self.db.leaderOnly then return true end
     if type(GetGuildInfo) ~= "function" then return false, "cannot verify guild rank" end
     local _, _, rankIndex = GetGuildInfo("player")
@@ -344,6 +345,7 @@ function Greeter:Initialize()
         end
     end
     if type(db.leaderOnly) ~= "boolean" then db.leaderOnly = true end
+    if type(db.paused) ~= "boolean" then db.paused = false end
     if type(db.randomMessages) ~= "boolean" then db.randomMessages = true end
     if type(db.discordEnabled) ~= "boolean" then db.discordEnabled = false end
     if type(db.discordText) ~= "string" then db.discordText = "Join our Discord! Ask an officer for an invite." end
