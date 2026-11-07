@@ -79,10 +79,11 @@ GameTooltip = setmetatable({}, Widget)
 
 local ns = {}
 assert(loadfile("ForgeGuildGreeter/Core.lua"))("ForgeGuildGreeter", ns)
+assert(loadfile("ForgeGuildGreeter/Quality.lua"))("ForgeGuildGreeter", ns)
 assert(loadfile("ForgeGuildGreeter/UI.lua"))("ForgeGuildGreeter", ns)
 assert(loadfile("ForgeGuildGreeter/Minimap.lua"))("ForgeGuildGreeter", ns)
 local addon = assert(ns.Greeter)
-assert(addon.version == "0.1.1")
+assert(addon.version == "0.2.0")
 addon:Initialize()
 assert(requestCount >= 1)
 assert(addon.frame and addon.minimapButton)
