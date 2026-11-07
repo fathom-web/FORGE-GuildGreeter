@@ -212,6 +212,28 @@ addon:ProcessQueue()
 assert(#outgoing == 3 and #addon.queue == 0)
 addon.db.discordEnabled = false
 
+-- Pending messages are discarded if a member leaves before dispatch.
+addon.db.discordEnabled = false
+addon.db.channels.welcome = "GUILD"
+now = now + 10
+guild[#guild + 1] = { name = "HitAndRun", rank = "Raider", online = true }
+addon:ProcessRoster()
+assert(#addon.queue == 1)
+table.remove(guild, #guild)
+addon:ProcessRoster()
+addon:ProcessQueue()
+assert(#outgoing == 3, "Do not welcome a member who already left")
+
+-- Pause clears pending greetings immediately (not just at next queue tick).
+now = now + 10
+guild[#guild + 1] = { name = "Pending", rank = "Raider", online = true }
+addon:ProcessRoster()
+assert(#addon.queue == 1)
+addon.minimapButton.scripts.OnClick(addon.minimapButton, "RightButton")
+assert(#addon.queue == 0 and addon.db.paused)
+addon.minimapButton.scripts.OnClick(addon.minimapButton, "RightButton")
+assert(not addon.db.paused)
+
 -- The slash command and minimap control exist and retain position.
 assert(type(SlashCmdList.FORGEGUILDGREETER) == "function")
 SlashCmdList.FORGEGUILDGREETER("status")
