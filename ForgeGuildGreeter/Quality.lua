@@ -94,7 +94,8 @@ end
 
 function Greeter:TryWelcomeWhisper(member)
     local db = self.db
-    if not db.welcomeWhisperEnabled or db.channels.welcome == "LOCAL" then return end
+    if not db.welcomeWhisperEnabled or db.channels.welcome == "LOCAL"
+        or db.channels.welcome == "WHISPER" or member.online == false then return end
     local key = string.lower(member.name or "")
     if key == "" then return end
     local previous = db.lastWhisper[key]
