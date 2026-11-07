@@ -4,7 +4,7 @@
 
 A customizable, lightweight World of Warcraft **Forever** guild welcome addon by [Novyx Forge](https://wow.novyxforge.com/). Built using the dark charcoal/gold native UI design language of **FORGE AFK — DAD MODE**.
 
-**Version: 0.1.1** — development build; in-game verification is required before CurseForge publication.
+**Version: 0.2.0** — development build; in-game verification is required before CurseForge publication.
 
 ## What it does
 
@@ -16,11 +16,16 @@ A customizable, lightweight World of Warcraft **Forever** guild welcome addon by
 - **Template variables:** \`{player}\`, \`{full}\`, \`{guild}\`, \`{class}\`, \`{level}\`, \`{rank}\`.
 - **Send channels per event:** Guild chat (default), whisper, officer chat, or **LOCAL** (only you see the text).
 - **Optional Discord reminder:** edit the appended text. Disabled by default; your server invite link is not guessed or hardcoded.
-- **Anti-spam:** configurable per-player/event cooldown (5–120 minutes), spacing between announcements (5–30 seconds), and outgoing limit (1–8 every five minutes). Stale queue entries expire.
+- **Anti-spam:** default **24-hour cooldown for online greetings** (adjustable 1/6/12/24/48 hours), separate 5–120 minute welcome cooldown, 5–30 second spacing, and maximum 1–8 announcements per five minutes. Stale queue entries expire.
 - **Quiet hours:** optional start/end hours using WoW's **server clock**, including midnight-crossing windows.
 - **Guild Master only:** enabled by default to reduce duplicate automated greetings if several guildmates install the addon. You can disable this to allow other ranks, but multiple broadcasters may duplicate greetings.
 - **Randomized or sequential texts.** Welcome greetings always rotate without repeats: five distinct slots per round, then a new round. Online messages use the standard random/sequential option.
 - **Saved settings, moveable panel, draggable minimap icon.** Right-click the minimap icon to pause/resume all announcements.
+- **Safe preview and click-to-send test:** each selected message has Preview and Send Test. Send Test uses the selected channel, prefixes the message with [TEST], and never advances the welcome rotation or automated cooldowns. The recipient for test whispers is your own character.
+- **Optional personal welcome whisper:** a separately editable template, off by default and limited to one request per new member every 24 hours.
+- **Activity log:** last ten local previews, chat submission attempts, blocks and resets. Status shows ACTIVE, PAUSED or CHAT BLOCKED (where API errors are detectable).
+- **Restore defaults:** individual original messages can be restored. The Advanced → Behavior reset requires a second click within 15 seconds and preserves all customized greeting templates.
+- **Roster burst protection:** ignores large incomplete roster drops and suppresses mass welcome floods after suspiciously large increases.
 - No third-party libraries, tracking, accounts, or background servers.
 
 ## Interface
@@ -29,10 +34,11 @@ Dark charcoal background, gold typography and buttons, same visual conventions a
 
 | Tab | What you can customize |
 | --- | --- |
-| WELCOME | Five fixed welcome slots: edit/save each message, select send channel, live preview and no-repeat rotation |
-| ONLINE | Return greetings, channel, add/remove/save, live preview |
-| SETTINGS | Guild Master only, randomized text, Discord reminders, quiet hours, cooldown, chat pacing, maximum messages, quiet window, Discord text |
-| ABOUT | Behavior, limitations, commands, Novyx Forge link |
+| WELCOME | Five fixed editable welcome slots, Previous/Next, Save, Preview, Send Test, Restore Original, channel |
+| ONLINE | Online greetings, message add/remove, Save, Preview, Send Test, Restore Original, channel |
+| ADVANCED → Behavior | Guild Master only, randomized messages, cooldowns, quiet hours, pacing, rate limit, reset defaults with confirmation |
+| ADVANCED → Messages | Discord reminder and optional personal welcome whisper with independent editable texts |
+| ACTIVITY | Last ten actions, with BLOCKED or REQUESTED status where applicable |
 
 Two main buttons across the top enable/disable welcome and online greetings independently. All edits are stored in WoW's SavedVariables.
 
@@ -42,7 +48,7 @@ The intended TOC interface is **16001**, following the known-working FORGE AFK a
 
 1. Obtain a maintainer test ZIP from the GitHub **Actions → Package GuildGreeter for CurseForge → Artifacts**, or install from source.
 2. Put the **ForgeGuildGreeter** folder directly inside the WoW client's \`Interface/AddOns/\` folder.
-3. Verify \`ForgeGuildGreeter.toc\`, \`ForgeGuildGreeter_Forever.toc\`, \`Core.lua\`, \`UI.lua\` and \`Minimap.lua\` are in that directory.
+3. Verify \`ForgeGuildGreeter.toc\`, \`ForgeGuildGreeter_Forever.toc\`, \`Core.lua\`, \`Quality.lua\`, \`UI.lua\` and \`Minimap.lua\` are in that directory.
 4. Restart WoW; enable **FORGE GuildGreeter** in the AddOns list.
 5. Log in as guild master. Type \`/fgreet\` to open the configuration panel.
 
@@ -68,7 +74,7 @@ The addon requests the guild roster and listens for \`GUILD_ROSTER_UPDATE\` even
 - A new roster entry causes a **single welcome** (no immediate extra online greeting).
 - An existing roster entry changing from offline to online causes an **online greeting**.
 - Repeated events and short reconnects are suppressed by the cooldowns.
-- Temporary very small roster snapshots are ignored to reduce false join detections.
+- Temporary incomplete roster snapshots are ignored, and suspicious large roster expansions are treated as silent rebaselines rather than mass joins.
 - Only the **logged-in player** can perform this detection. The addon is not a 24/7 guild bot.
 
 There is no server-to-server synchronization among installations. The default Guild Master-only mode helps ensure a single sender, but if more than one Guild Master character is online simultaneously, or users turn that rule off, double greetings can still occur.
@@ -77,7 +83,7 @@ There is no server-to-server synchronization among installations. The default Gu
 
 The addon attempts messages through the standard WoW chat API. **Some versions of WoW block automated chat messages that are not initiated by a player click or keypress.** The addon does not bypass client restrictions. Therefore the real automatic guild-chat behavior must be verified in WoW Forever; if that server/client blocks it, the addon needs an approved/manual-send fallback.
 
-Similarly, a successful API call in a headless test cannot guarantee the game server delivered the chat. Do not publish this as a confirmed auto-greeter before live testing.
+**REQUESTED** in the Activity tab means the chat API accepted an attempted call; it is **not** evidence that the game server delivered the message. **CHAT BLOCKED** only appears for observable API failures; silently discarded messages cannot be detected. Use **Preview** (local) and **Send Test** (explicit click) to diagnose. Do not publish this as a confirmed auto-greeter before live testing.
 
 ## Developer checks
 
@@ -90,7 +96,12 @@ Similarly, a successful API call in a headless test cannot guarantee the game se
 
 - [ ] Addon loads without Lua errors on the WoW Forever client.
 - [ ] \`/fgreet\` opens the dark/gold panel and each tab works.
-- [ ] Edit/add/delete templates, reload UI and confirm settings persist.
+- [ ] Edit/add/delete online templates; edit all five welcome slots; reload UI and confirm settings and rotations persist.
+- [ ] Use Preview without guild chat, then Send Test in Guild/Whisper channels.
+- [ ] Confirm automatic messages work without a click, and do not confuse REQUESTED with delivered.
+- [ ] Enable welcome whispers with a second character and verify one whisper per day.
+- [ ] Verify last-ten Activity log, observable CHAT BLOCKED state and recovery after a successful test.
+- [ ] Reset one template, then reset advanced settings with two clicks; ensure custom texts survive.
 - [ ] Verify template variable substitutions for all available variables.
 - [ ] Log in as Guild Master and verify **no initial message flood**.
 - [ ] Have one new player join while you are online; verify exactly one welcome.
