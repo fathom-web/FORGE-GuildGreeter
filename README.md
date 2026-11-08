@@ -4,22 +4,22 @@
 
 A customizable, lightweight World of Warcraft **Forever** guild welcome addon by [Novyx Forge](https://wow.novyxforge.com/). Built using the dark charcoal/gold native UI design language of **FORGE AFK — DAD MODE**.
 
-**Version: 0.3.0** — development build; in-game verification is required before CurseForge publication.
+**Version: 0.4.0** — development build; in-game verification is required before CurseForge publication.
 
 ## What it does
 
 - **New guild members:** detect players appearing in the guild roster after the initial baseline, and announce a welcome.
 - **Existing members who come online:** detect changes from offline to online and greet them once.
 - **No login flood:** the guild members already visible when you log in are the baseline, not new arrivals. A new member must appear in two complete roster snapshots at least 3 seconds apart before triggering a welcome.
-- **Five fixed, fully editable welcome messages:** all five are used in a shuffled rotation before any repeats; the next round never starts with the previous round's last message. The rotation survives /reload and reconnects.
-- **Online greetings:** edit, add, remove or cycle through up to **50 custom login messages**. Four humorous examples are included.
+- **15 fully editable welcome messages:** all 15 are used once in their shuffled rotation before repeating. The next round never opens with the previous round's last message.
+- **15 fully editable online greetings:** the online pool also contains exactly 15 distinct templates, with its own independently saved non-repeating shuffle rotation. All 30 templates can be edited or restored.
 - **Template variables:** \`{player}\`, \`{full}\`, \`{guild}\`, \`{class}\`, \`{level}\`, \`{rank}\`.
 - **Send channels per event:** Guild chat (default), whisper, officer chat, or **LOCAL** (only you see the text).
 - **Optional Discord reminder:** edit the appended text. Disabled by default; your server invite link is not guessed or hardcoded.
 - **Anti-spam:** default **24-hour cooldown for online greetings** (adjustable 1/6/12/24/48 hours), separate 5–120 minute welcome cooldown, 5–30 second spacing, and maximum 1–8 announcements per five minutes. Stale queue entries expire.
 - **Quiet hours:** optional start/end hours using WoW's **server clock**, including midnight-crossing windows.
 - **Guild Master only:** enabled by default to reduce duplicate automated greetings if several guildmates install the addon. You can disable this to allow other ranks, but multiple broadcasters may duplicate greetings.
-- **Randomized or sequential texts.** Welcome greetings always rotate without repeats: five distinct slots per round, then a new round. Online messages use the standard random/sequential option.
+- **Randomized or sequential texts.** Both categories use independent 15-message cycles without repeats. Changing the shuffle preference takes effect after the current cycle ends, preserving unused messages.
 - **Saved settings, moveable panel, draggable minimap icon.** Right-click the minimap icon to pause/resume all announcements.
 - **Safe preview and click-to-send test:** each selected message has Preview and Send Test. Send Test uses the selected channel, prefixes the message with [TEST], and never advances the welcome rotation or automated cooldowns. The recipient for test whispers is your own character.
 - **Optional personal welcome whisper:** a separately editable template, off by default and limited to one request per new member every 24 hours.
@@ -37,8 +37,8 @@ Dark charcoal background, gold typography and buttons, same visual conventions a
 
 | Tab | What you can customize |
 | --- | --- |
-| WELCOME | Five fixed editable welcome slots, Previous/Next, Save, Preview, Send Test, Restore Original, channel |
-| ONLINE | Online greetings, message add/remove, Save, Preview, Send Test, Restore Original, channel |
+| WELCOME | 15 fixed editable welcome messages, Previous/Next or +5 navigation, Save, Preview, Send Test, Restore, channel |
+| ONLINE | 15 fixed editable online greetings, Previous/Next or +5 navigation, Save, Preview, Send Test, Restore, channel |
 | ADVANCED → Behavior | Guild Master only, automatic/manual mode, randomized messages, cooldowns, quiet hours, pacing, rate limit, reset defaults with confirmation |
 | ADVANCED → Messages | Discord reminder and optional personal welcome whisper with independent editable texts |
 | ACTIVITY | Last ten actions, blocked/requested status, plus CHECK SETUP; the main panel shows WAITING/MANUAL queue counters and SEND NEXT |
@@ -101,7 +101,7 @@ The addon attempts messages through the standard WoW chat API. **Some versions o
 
 - [ ] Addon loads without Lua errors on the WoW Forever client.
 - [ ] \`/fgreet\` opens the dark/gold panel and each tab works.
-- [ ] Edit/add/delete online templates; edit all five welcome slots; reload UI and confirm settings and rotations persist.
+- [ ] Edit all 15 online and all 15 welcome templates; reload UI and confirm settings and shuffle rotations persist.
 - [ ] Use Preview without guild chat, then Send Test in Guild/Whisper channels.
 - [ ] Confirm automatic messages work without a click, and do not confuse REQUESTED with delivered.
 - [ ] Enable welcome whispers with a second character and verify one whisper per day.
@@ -125,7 +125,7 @@ The addon attempts messages through the standard WoW chat API. **Some versions o
 
 ## Roadmap
 
-V1 is deliberately focused on **welcoming guildmates**. For the five welcome slots, Add/Delete are intentionally unavailable; you can rewrite all five texts without losing the no-repeat guarantee. Existing installations with four greetings get a fifth without overwriting their custom first four. Extra experimental greetings beyond five are archived in SavedVariables. Potential follow-ups include per-player greetings, rank-specific templates, shared master election and localization after client behavior has been verified.
+V1 stays focused on **welcoming guildmates**. Both categories have exactly 15 fixed slots: edit or restore any text rather than adding/removing slots. Existing custom messages from earlier versions are preserved in their original positions; missing slots are populated with new default jokes. Extra messages beyond 15 from older experimental online builds are archived in SavedVariables, not erased. The two independent shuffle sequences are saved across reloads; upgraded five-message rotations restart as 15-message cycles without repeating the last welcome. Potential later ideas include per-player greetings or rank-specific messages after real-client validation.
 
 ## License
 
