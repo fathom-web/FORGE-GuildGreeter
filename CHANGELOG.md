@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.0 — Thirty customizable greetings (development / in-game testing pending)
+
+- Increased the fixed **Welcome** library from five to **15 different editable messages**.
+- Increased the fixed **Online** library to **15 different editable messages**.
+- Both categories now have separate, saved non-repeating shuffle bags; all 15 messages play before the pool restarts, with no adjacent repeat at round boundaries.
+- Supplied 10 new funny welcome lines and 11 new online greetings, while preserving existing customized texts in their original slots.
+- Converted both tabs to the same compact editor: Previous/Next, jump +5, Save, Preview, Send Test and Restore Original. No unnecessary add/delete controls.
+- Preserved and migrated old SavedVariables. Extra online templates above 15, if any, are archived in SavedVariables rather than silently discarded.
+- Updated Lua regression tests for message uniqueness, independent rotations, editing and migration from older installations.
+- Automatic greetings remain enabled by default; manual mode is still optional.
+
+
 ## 0.3.0 — Release candidate / live WoW validation pending
 
 - Added manual-only mode and a user-click **SEND NEXT** fallback for blocked automatic greeting attempts.
