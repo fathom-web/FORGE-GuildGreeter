@@ -51,7 +51,6 @@ function Greeter:InitQuality()
     self.lastAttempt = nil
     self.rosterPollingBlocked = false
     self.blockedDuringSend = false
-    self.keyboardReady = false
 end
 
 function Greeter:LogAction(status, kind, player, message)
@@ -75,7 +74,6 @@ function Greeter:StatusText()
     end
     if self.db.paused then return "PAUSED" end
     if self.db.manualMode then return "MANUAL MODE" end
-    if not self.keyboardReady then return "MANUAL FALLBACK - NO SAFE KEY INPUT" end
     if not self.ready then return "LOADING ROSTER" end
     local allowed, reason = self:CanAnnounce()
     if not allowed then return "INACTIVE: " .. tostring(reason) end
@@ -94,8 +92,8 @@ function Greeter:TryChat(content, channel, recipient)
     else
         return false, "Chat API unavailable"
     end
-    -- A successful protected call means submission was attempted. There is
-    -- no guarantee of server delivery. Blocked calls are not retried/spammed.
+    -- Guild/officer/whisper chat is legal from normal addon event callbacks.
+    -- A successful call is only a submission attempt, not confirmed delivery.
     self.blockedDuringSend = false
     self.sendingChat = true
     local ok, result = pcall(sender, content, channel, nil, recipient)
@@ -380,48 +378,14 @@ function Greeter:RunSetupCheck()
     self:Print("Welcome: " .. (self.db.enabled.welcome and "ON" or "OFF") ..
         " | online: " .. (self.db.enabled.online and "ON" or "OFF") ..
         " | pending: " .. self:PendingCount())
-    self:Print("Next: use PREVIEW, then SEND TEST. Real automatic delivery must be checked with a guildmate.")
+    self:Print("Next: use PREVIEW and SEND TEST. Guild chat is automatic; a successful call is not proof of delivery.")
+    if not ok and why == "Guild Master only" then
+        self:Print("Current character is not Guild Master. Use /fgreet enable to let this character send automatically.")
+    end
     self:RefreshUI()
     return ok and self.ready and hasChat and true or false
 end
 
-
--- On Forever, a normal timer callback is not a player hardware event. It can
--- provoke Blizzard's "Interface action failed because of an AddOn" message
--- even when pcall reports no Lua error. Listen for actual keyboard input
--- without intercepting input or requiring the player to press a special key.
-function Greeter:CreateKeyboardDispatcher()
-    self.keyboardReady = false
-    if type(CreateFrame) ~= "function" or not UIParent then return false end
-    local frame = CreateFrame("Frame", "ForgeGuildGreeterKeyboardDispatcher", UIParent)
-    frame:SetSize(1, 1)
-    frame:SetPoint("CENTER", UIParent, "CENTER")
-    frame:SetFrameStrata("HIGH")
-    -- Do not enable mouse capture or block gameplay bindings.
-    if type(frame.SetPropagateKeyboardInput) ~= "function"
-        or type(frame.EnableKeyboard) ~= "function" then
-        self:Print("This client lacks safe keyboard propagation; greetings require SEND NEXT.")
-        return false
-    end
-    local ok = pcall(function()
-        frame:SetPropagateKeyboardInput(true)
-        frame:EnableKeyboard(true)
-    end)
-    if not ok then
-        self:Print("Unable to initialize keyboard listener; greetings require SEND NEXT.")
-        return false
-    end
-    frame:SetScript("OnKeyDown", function()
-        if not Greeter.db or Greeter.db.paused then return end
-        if Greeter.db.manualMode or Greeter.chatBlocked then return end
-        -- The chat call remains in the OnKeyDown hardware event call stack.
-        -- Do not move this into a timer, coroutine, or an event fired later.
-        Greeter:ProcessQueue(true)
-    end)
-    self.keyboardFrame = frame
-    self.keyboardReady = true
-    return true
-end
 
 -- Record the actual blocked function to distinguish chat restrictions from
 -- guild-roster restrictions. This listener never triggers protected calls.
