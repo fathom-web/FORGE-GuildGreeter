@@ -83,7 +83,7 @@ assert(loadfile("ForgeGuildGreeter/Quality.lua"))("ForgeGuildGreeter", ns)
 assert(loadfile("ForgeGuildGreeter/UI.lua"))("ForgeGuildGreeter", ns)
 assert(loadfile("ForgeGuildGreeter/Minimap.lua"))("ForgeGuildGreeter", ns)
 local addon = assert(ns.Greeter)
-assert(addon.version == "0.2.0")
+assert(addon.version == "0.3.0")
 addon:Initialize()
 assert(requestCount >= 1)
 assert(addon.frame and addon.minimapButton)
@@ -144,6 +144,8 @@ assert(#addon.queue == 0)
 now = now + 10
 guild[#guild + 1] = { name = "Thrall", rank = "Raider", online = true, level = 60, class = "Shaman" }
 addon:ProcessRoster()
+now = now + 3
+addon:ProcessRoster()
 assert(#addon.queue == 1 and addon.queue[1].kind == "welcome")
 addon:ProcessQueue()
 assert(#outgoing == 2)
@@ -189,15 +191,19 @@ addon.db.channels.welcome = "LOCAL"
 now = now + 10
 guild[#guild + 1] = { name = "Tester", rank = "Raider", online = false, level = 12, class = "Druid" }
 addon:ProcessRoster()
+now = now + 3
+addon:ProcessRoster()
 addon:ProcessQueue()
 assert(#outgoing == 2, "Local channel must not send actual guild chat")
-assert(addon.db.stats.welcome == 2)
+assert(addon.db.stats.welcome == 1, "LOCAL preview should not consume welcome rotation")
 
 -- PAUSE must suppress all greetings.
 addon.minimapButton.scripts.OnClick(addon.minimapButton, "RightButton")
 assert(addon.db.paused == true)
 now = now + 10
 guild[#guild + 1] = { name = "PausedUser", rank = "Raider", online = true }
+addon:ProcessRoster()
+now = now + 3
 addon:ProcessRoster()
 assert(#addon.queue == 0, "Pause must block queues")
 addon.minimapButton.scripts.OnClick(addon.minimapButton, "RightButton")
@@ -208,12 +214,16 @@ rankIndex = 1
 now = now + 10
 guild[#guild + 1] = { name = "LeaderTest", rank = "Raider", online = true }
 addon:ProcessRoster()
+now = now + 3
+addon:ProcessRoster()
 assert(#addon.queue == 0)
 addon.db.leaderOnly = false
 addon.db.channels.welcome = "WHISPER"
 addon.db.maxPerFiveMinutes = 8
 now = now + 10
 guild[#guild + 1] = { name = "WhisperTest", rank = "Raider", online = true }
+addon:ProcessRoster()
+now = now + 3
 addon:ProcessRoster()
 addon:ProcessQueue()
 assert(#outgoing == 3)
@@ -227,6 +237,8 @@ hour = 23
 now = now + 10
 guild[#guild + 1] = { name = "NightOwl", rank = "Raider", online = true }
 addon:ProcessRoster()
+now = now + 3
+addon:ProcessRoster()
 assert(#addon.queue == 0)
 hour = 9
 assert(not addon:IsQuiet())
@@ -239,6 +251,8 @@ addon.db.discordEnabled = true
 addon.db.discordText = string.rep("a", 240)
 now = now + 10
 guild[#guild + 1] = { name = "LongMessage", rank = "Raider", online = true }
+addon:ProcessRoster()
+now = now + 3
 addon:ProcessRoster()
 assert(#addon.queue == 1)
 addon:ProcessQueue()
@@ -260,6 +274,8 @@ assert(#outgoing == 3, "Do not welcome a member who already left")
 -- Pause clears pending greetings immediately (not just at next queue tick).
 now = now + 10
 guild[#guild + 1] = { name = "Pending", rank = "Raider", online = true }
+addon:ProcessRoster()
+now = now + 3
 addon:ProcessRoster()
 assert(#addon.queue == 1)
 addon.minimapButton.scripts.OnClick(addon.minimapButton, "RightButton")
@@ -303,11 +319,11 @@ assert(addon.db.activity[1].status == "TEST REQUESTED")
 local sender = C_ChatInfo.SendChatMessage
 C_ChatInfo.SendChatMessage = function() error("protected chat operation") end
 assert(not addon:SendTest("welcome", "Hello!"))
-assert(addon:StatusText() == "CHAT BLOCKED")
+assert(addon:StatusText():find("CHAT BLOCKED", 1, true))
 assert(addon.db.activity[1].status == "BLOCKED")
 C_ChatInfo.SendChatMessage = function() return false end
 assert(not addon:SendTest("welcome", "Hello!"))
-assert(addon:StatusText() == "CHAT BLOCKED")
+assert(addon:StatusText():find("CHAT BLOCKED", 1, true))
 C_ChatInfo.SendChatMessage = sender
 assert(addon:SendTest("welcome", "Hello!"))
 assert(addon:StatusText() == "ACTIVE")
@@ -355,5 +371,120 @@ for i = 1, 5 do
         "Options reset should never delete customized greetings")
 end
 
-print("FORGE GuildGreeter v0.2: mock checks for tests, status, cooldowns, whispers, resets and activity passed.")
+
+-- First-run setup is a real button; never assumes that server delivery works.
+assert(addon.ui.setupButton and addon.ui.setupButton.scripts.OnClick)
+addon.db.setupSeen = false
+addon.ui.setupButton.scripts.OnClick()
+assert(addon.db.setupSeen)
+assert(addon.ui.sendNextButton and addon.ui.manualBtn)
+assert(addon.ui.queueLabel.text:find("MANUAL", 1, true))
+
+-- Partial roster rows must be ignored, even if the reported count is intact.
+local originalInfo = GetGuildRosterInfo
+local knownBefore = #addon.queue
+GetGuildRosterInfo = function(i)
+    if i == 2 then return nil end
+    return originalInfo(i)
+end
+addon:ProcessRoster()
+assert(#addon.queue == knownBefore)
+GetGuildRosterInfo = originalInfo
+
+-- Each new guild member needs two complete, time-separated observations.
+now = now + 400
+guild[#guild + 1] = {
+    name = "VerifiedJoin", rank = "Raider", online = true, class = "Druid", level = 22
+}
+addon:ProcessRoster()
+assert(#addon.queue == 0, "First roster snapshot cannot announce a guild join")
+now = now + 3
+addon:ProcessRoster()
+assert(#addon.queue == 1 and addon.queue[1].kind == "welcome")
+addon.queue, addon.queuedKeys = {}, {}
+
+-- A failed automatic send must leave the shuffle bag and cooldown unchanged,
+-- and it must be recoverable via a real UI-click fallback.
+now = now + 30
+guild[#guild + 1] = {
+    name = "FailedJoin", rank = "Raider", online = true, class = "Hunter", level = 21
+}
+addon:ProcessRoster()
+assert(#addon.queue == 0)
+now = now + 3
+addon:ProcessRoster()
+assert(#addon.queue == 1)
+addon.db.channels.welcome = "GUILD"
+addon.db.manualMode = false
+addon.db.maxPerFiveMinutes = 8
+local lastIndex = addon.db.welcomeRotation.lastIndex
+local remaining = #addon.db.welcomeRotation.remaining
+local outgoingBeforeFail = #outgoing
+local savedSender = C_ChatInfo.SendChatMessage
+C_ChatInfo.SendChatMessage = function() error("chat protected") end
+addon:ProcessQueue()
+assert(#outgoing == outgoingBeforeFail)
+assert(#addon.queue == 0 and addon:PendingCount() == 1)
+assert(addon.db.welcomeRotation.lastIndex == lastIndex)
+assert(#addon.db.welcomeRotation.remaining == remaining)
+assert(not addon.db.lastSent["welcome:failedjoin"])
+assert(addon.ui.sendNextButton.enabled)
+assert(addon.ui.queueLabel.text:find("MANUAL: 1", 1, true))
+
+C_ChatInfo.SendChatMessage = savedSender
+addon.ui.sendNextButton.scripts.OnClick()
+assert(addon:PendingCount() == 0)
+assert(#outgoing == outgoingBeforeFail + 1)
+assert(addon.db.lastSent["welcome:failedjoin"])
+assert(not addon.chatBlocked)
+
+-- Manual-only mode must queue, not send automatically; click sends one event.
+now = now + 20
+addon.db.manualMode = true
+guild[#guild + 1] = {
+    name = "ManualJoin", rank = "Raider", online = true, class = "Mage", level = 50
+}
+addon:ProcessRoster()
+now = now + 3
+addon:ProcessRoster()
+assert(#addon.queue == 1)
+local beforeManual = #outgoing
+addon:ProcessQueue()
+assert(#outgoing == beforeManual and addon:PendingCount() == 1)
+addon.ui.sendNextButton.scripts.OnClick()
+assert(#outgoing == beforeManual + 1 and addon:PendingCount() == 0)
+addon.db.manualMode = false
+
+-- A silent LOCAL preview should not advance the five-message cycle.
+now = now + 20
+addon.db.channels.welcome = "LOCAL"
+guild[#guild + 1] = {
+    name = "PreviewOnly", rank = "Raider", online = false, class = "Rogue", level = 12
+}
+addon:ProcessRoster()
+now = now + 3
+addon:ProcessRoster()
+local beforeLocal = addon:SnapshotRotation("welcome")
+local sentBeforeLocal = #outgoing
+addon:ProcessQueue()
+assert(#outgoing == sentBeforeLocal)
+assert(addon.db.welcomeRotation.lastIndex == beforeLocal.lastIndex)
+assert(#addon.db.welcomeRotation.remaining == #beforeLocal.remaining)
+assert(not addon.db.lastSent["welcome:previewonly"])
+
+-- Sudden mass additions must be rebaselined instead of welcomed.
+addon.db.channels.welcome = "GUILD"
+now = now + 10
+for i = 1, 4 do
+    guild[#guild + 1] = {
+        name = "MassJoin" .. i, rank = "Raider", online = true
+    }
+end
+addon:ProcessRoster()
+now = now + 3
+addon:ProcessRoster()
+assert(#addon.queue == 0, "Guild roster refill must not flood chat")
+assert(addon:PendingCount() == 0)
+
+print("FORGE GuildGreeter v0.3: mock checks passed.")
 
