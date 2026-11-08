@@ -205,7 +205,8 @@ function Greeter:ResetOptions()
     db.paused = false
     db.manualMode = false
     db.randomMessages = true
-    if db.welcomeRotation then db.welcomeRotation.remaining = {} end
+    -- Retain both in-progress 15-message bags; resetting settings does not
+    -- consume or reshuffle already scheduled greetings.
     db.discordEnabled = false
     db.welcomeWhisperEnabled = false
     db.quietEnabled = false
@@ -232,22 +233,23 @@ end
 -- Snapshot the welcome shuffle bag before attempting to send. A failed API
 -- call must not silently spend one of the five customizable welcome messages.
 function Greeter:SnapshotRotation(kind)
-    if kind ~= "welcome" then return { picked = self.lastPicked[kind] } end
-    local state = self.db.welcomeRotation
-    local snapshot = { lastIndex = state.lastIndex, remaining = {} }
-    for i, value in ipairs(state.remaining) do snapshot.remaining[i] = value end
+    local rotation = self:GetRotation(kind)
+    if not rotation then return nil end
+    local snapshot = { lastIndex = rotation.lastIndex, remaining = {} }
+    for i, value in ipairs(rotation.remaining) do
+        snapshot.remaining[i] = value
+    end
     return snapshot
 end
 
-function Greeter:RestoreRotation(kind, state)
-    if kind ~= "welcome" then
-        self.lastPicked[kind] = state and state.picked or nil
-        return
+function Greeter:RestoreRotation(kind, snapshot)
+    local rotation = self:GetRotation(kind)
+    if not rotation or not snapshot then return end
+    rotation.lastIndex = snapshot.lastIndex
+    rotation.remaining = {}
+    for i, value in ipairs(snapshot.remaining) do
+        rotation.remaining[i] = value
     end
-    if not state then return end
-    local current = self.db.welcomeRotation
-    current.lastIndex, current.remaining = state.lastIndex, {}
-    for i, value in ipairs(state.remaining) do current.remaining[i] = value end
 end
 
 function Greeter:HoldForManual(entry)
