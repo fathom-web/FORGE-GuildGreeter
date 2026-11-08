@@ -182,7 +182,7 @@ function Greeter:CreateUI()
     local editor = CreateFrame("Frame", nil, p)
     editor:SetSize(472, 330)
     editor:SetPoint("TOPLEFT", p, "TOPLEFT", 19, -238)
-    local indexLabel = Label(editor, "MESSAGE 1 / 4", 0, 0, "GameFontNormal", C.gold)
+    local indexLabel = Label(editor, "MESSAGE 1 / 15", 0, 0, "GameFontNormal", C.gold)
     Button(editor, "<", 361, 4, 50, 30, function() Greeter:ChangeMessage(-1) end)
     Button(editor, ">", 421, 4, 50, 30, function() Greeter:ChangeMessage(1) end)
     Label(editor, "Edit your message (up to 220 characters):", 0, -40)
@@ -210,43 +210,25 @@ function Greeter:CreateUI()
 
     local addButton = Button(editor, "ADD NEW", 242, -163, 110, 37, function()
         local kind = Greeter:CurrentKind()
-        if kind == "welcome" then
+        if kind == "welcome" or kind == "online" then
             local ok, err = Greeter:RestoreTemplate(kind, Greeter.ui.index[kind])
             if not ok then Greeter:Print(err); return end
             Greeter:LoadSelectedMessage()
-            Greeter:Print("Original welcome message restored.")
+            Greeter:Print("Original " .. kind .. " message restored.")
             return
         end
-        if not Greeter:CommitDraft() then return end
-        local ok, index = Greeter:AddMessage(kind, "Welcome back, {player}!")
-        if not ok then Greeter:Print(index); return end
-        Greeter.ui.index[kind] = index
-        Greeter:LoadSelectedMessage()
-        Greeter:UpdatePanel()
+        -- All 15 message slots already exist; editing and restoring are enough.
     end)
-    local deleteButton = Button(editor, "DELETE", 362, -163, 110, 37, function()
-        local kind = Greeter:CurrentKind()
-        local ok, err = Greeter:DeleteMessage(kind, Greeter.ui.index[kind])
-        if not ok then Greeter:Print(err); return end
-        Greeter.ui.index[kind] = math.max(1, math.min(Greeter.ui.index[kind], #Greeter.db.messages[kind]))
-        Greeter:LoadSelectedMessage()
-        Greeter:UpdatePanel()
+    local jumpButton = Button(editor, "NEXT +5", 362, -163, 110, 37, function()
+        Greeter:ChangeMessage(5)
     end)
     local channelBtn = Button(editor, "", 0, -163, 232, 37, function()
         local kind = Greeter:CurrentKind()
         Greeter.db.channels[kind] = Cycle(Greeter.channels, Greeter.db.channels[kind])
         Greeter:RefreshUI()
     end)
-    local uniqueHint = Label(editor, "5 UNIQUE WELCOMES  -  NO REPEATS UNTIL ALL FIVE PLAY",
+    local uniqueHint = Label(editor, "15 UNIQUE MESSAGES  -  ALL PLAY BEFORE REPEATING",
         0, -201, "GameFontHighlightSmall", C.gold)
-    local restoreOnlineBtn = Button(editor, "RESTORE ORIGINAL", 306, -199, 166, 33, function()
-        local kind = Greeter:CurrentKind()
-        if kind ~= "online" then return end
-        local ok, err = Greeter:RestoreTemplate(kind, Greeter.ui.index[kind])
-        if not ok then Greeter:Print(err); return end
-        Greeter:LoadSelectedMessage()
-        Greeter:Print("Original online greeting restored.")
-    end)
     Label(editor, "PREVIEW / VARS: {player} {guild} {class} {level} {rank}", 0, -243,
         "GameFontNormalSmall", C.gold)
     local previewText = Label(editor, "", 0, -268, "GameFontHighlightSmall")
@@ -284,7 +266,8 @@ function Greeter:CreateUI()
     end)
     local randomBtn = Button(policyPage, "", 242, 0, 230, 42, function()
         Greeter.db.randomMessages = not Greeter.db.randomMessages
-        Greeter.db.welcomeRotation.remaining = {}
+        -- The updated shuffle preference takes effect at the next bag, without
+        -- abandoning unused messages in the current cycle.
         Greeter:RefreshUI()
     end)
     local quietBtn = Button(policyPage, "", 0, -54, 230, 42, function()
@@ -402,9 +385,8 @@ function Greeter:CreateUI()
         welcomeToggle = welcomeToggle, onlineToggle = onlineToggle,
         tabs = tabs, statusLabel = statusLabel, indexLabel = indexLabel,
         messageEdit = messageEdit, channelBtn = channelBtn,
-        addButton = addButton, deleteButton = deleteButton,
+        addButton = addButton, jumpButton = jumpButton,
         uniqueHint = uniqueHint, queueLabel = queueLabel, sendNextButton = sendNextButton,
-        restoreOnlineBtn = restoreOnlineBtn,
         previewText = previewText,
         leaderBtn = leaderBtn, randomBtn = randomBtn, quietBtn = quietBtn,
         manualBtn = manualBtn, setupButton = setupButton,
@@ -474,13 +456,12 @@ function Greeter:UpdatePanel()
         else button:SetBackdropBorderColor(unpack(C.edge)) end
     end
     u.addButton:SetEnabled(isEditor)
-    u.deleteButton:SetEnabled(isEditor and kind ~= "welcome")
+    u.jumpButton:SetEnabled(isEditor)
     u.addButton:SetAlpha(isEditor and 1 or 0.4)
-    u.deleteButton:SetAlpha(kind == "welcome" and 0.4 or 1)
-    u.addButton.label:SetText(kind == "welcome" and "RESTORE" or "ADD")
-    u.deleteButton.label:SetText(kind == "welcome" and "5 SLOTS" or "DELETE")
-    u.uniqueHint:SetShown(isEditor and kind == "welcome")
-    u.restoreOnlineBtn:SetShown(isEditor and kind == "online")
+    u.jumpButton:SetAlpha(isEditor and 1 or 0.4)
+    u.addButton.label:SetText("RESTORE")
+    u.jumpButton.label:SetText("NEXT +5")
+    u.uniqueHint:SetShown(isEditor)
     if isEditor then
         u.indexLabel:SetText(string.upper(kind) .. " MESSAGE  " ..
             u.index[kind] .. " / " .. #self.db.messages[kind])
