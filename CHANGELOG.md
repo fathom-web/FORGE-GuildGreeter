@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.1 — WoW Forever blocked-action fix (in-game validation pending)
+
+- Replaced timer-based automatic chat sends with deferred dispatch on the next real keyboard event. The listener propagates keys instead of consuming input.
+- Preserved automatic detection, both 15-message libraries, cooldowns and anti-spam.
+- Added ADDON_ACTION_BLOCKED and ADDON_ACTION_FORBIDDEN diagnostics. Records the exact action attributed to GuildGreeter, pauses blocked chat and stops blocked roster polling.
+- If safe keyboard propagation is unavailable, holds greetings for the existing SEND NEXT fallback rather than making unsafe timer calls.
+- Extended Lua mock regression tests for keyboard-triggered sends and blocked protected actions.
+- Actual delivery and keyboard propagation must still be verified in WoW Forever 1.60.1.
+
+
 ## 0.4.0 — Thirty customizable greetings (development / in-game testing pending)
 
 - Increased the fixed **Welcome** library from five to **15 different editable messages**.
