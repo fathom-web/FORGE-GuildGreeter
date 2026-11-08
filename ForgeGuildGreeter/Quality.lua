@@ -49,6 +49,9 @@ function Greeter:InitQuality()
     -- Transient state: we cannot confirm delivery just from the API call.
     self.chatBlocked = false
     self.lastAttempt = nil
+    self.rosterPollingBlocked = false
+    self.blockedDuringSend = false
+    self.keyboardReady = false
 end
 
 function Greeter:LogAction(status, kind, player, message)
@@ -72,6 +75,7 @@ function Greeter:StatusText()
     end
     if self.db.paused then return "PAUSED" end
     if self.db.manualMode then return "MANUAL MODE" end
+    if not self.keyboardReady then return "MANUAL FALLBACK - NO SAFE KEY INPUT" end
     if not self.ready then return "LOADING ROSTER" end
     local allowed, reason = self:CanAnnounce()
     if not allowed then return "INACTIVE: " .. tostring(reason) end
@@ -92,7 +96,11 @@ function Greeter:TryChat(content, channel, recipient)
     end
     -- A successful protected call means submission was attempted. There is
     -- no guarantee of server delivery. Blocked calls are not retried/spammed.
+    self.blockedDuringSend = false
+    self.sendingChat = true
     local ok, result = pcall(sender, content, channel, nil, recipient)
+    self.sendingChat = false
+    if self.blockedDuringSend then return false, "Protected chat call rejected by WoW" end
     if not ok then return false, tostring(result) end
     if result == false then return false, "Chat API returned false" end
     return true
@@ -375,4 +383,63 @@ function Greeter:RunSetupCheck()
     self:Print("Next: use PREVIEW, then SEND TEST. Real automatic delivery must be checked with a guildmate.")
     self:RefreshUI()
     return ok and self.ready and hasChat and true or false
+end
+
+
+-- On Forever, a normal timer callback is not a player hardware event. It can
+-- provoke Blizzard's "Interface action failed because of an AddOn" message
+-- even when pcall reports no Lua error. Listen for actual keyboard input
+-- without intercepting input or requiring the player to press a special key.
+function Greeter:CreateKeyboardDispatcher()
+    self.keyboardReady = false
+    if type(CreateFrame) ~= "function" or not UIParent then return false end
+    local frame = CreateFrame("Frame", "ForgeGuildGreeterKeyboardDispatcher", UIParent)
+    frame:SetSize(1, 1)
+    frame:SetPoint("CENTER", UIParent, "CENTER")
+    frame:SetFrameStrata("HIGH")
+    -- Do not enable mouse capture or block gameplay bindings.
+    if type(frame.SetPropagateKeyboardInput) ~= "function"
+        or type(frame.EnableKeyboard) ~= "function" then
+        self:Print("This client lacks safe keyboard propagation; greetings require SEND NEXT.")
+        return false
+    end
+    local ok = pcall(function()
+        frame:SetPropagateKeyboardInput(true)
+        frame:EnableKeyboard(true)
+    end)
+    if not ok then
+        self:Print("Unable to initialize keyboard listener; greetings require SEND NEXT.")
+        return false
+    end
+    frame:SetScript("OnKeyDown", function()
+        if not Greeter.db or Greeter.db.paused then return end
+        if Greeter.db.manualMode or Greeter.chatBlocked then return end
+        -- The chat call remains in the OnKeyDown hardware event call stack.
+        -- Do not move this into a timer, coroutine, or an event fired later.
+        Greeter:ProcessQueue(true)
+    end)
+    self.keyboardFrame = frame
+    self.keyboardReady = true
+    return true
+end
+
+-- Record the actual blocked function to distinguish chat restrictions from
+-- guild-roster restrictions. This listener never triggers protected calls.
+function Greeter:HandleProtectedAction(eventName, addon, functionName)
+    local addonText = type(addon) == "string" and string.lower(addon) or ""
+    if not string.find(addonText, "forgeguildgreeter", 1, true) then return end
+    local fn = type(functionName) == "string" and functionName or "unknown function"
+    self.lastProtectedAction = fn
+    if self.db then self.db.lastProtectedAction = fn end
+    if self.sendingChat then self.blockedDuringSend = true end
+    if string.find(string.lower(fn), "guildroster", 1, true) then
+        self.rosterPollingBlocked = true
+        self:Print("WoW blocked roster polling; automatic roster requests stopped.")
+    else
+        self.chatBlocked = true
+        self:Print("WoW blocked " .. fn .. "; automatic sending paused. Use SEND NEXT.")
+    end
+    if self.LogAction then
+        self:LogAction("WOW BLOCK", "protected", "ForgeGuildGreeter", fn)
+    end
 end
