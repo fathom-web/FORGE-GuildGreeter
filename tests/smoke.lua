@@ -70,6 +70,8 @@ function Widget:IsShown() return self.visible == true end
 function Widget:GetCenter() return 500, 500 end
 function Widget:GetEffectiveScale() return 1 end
 function Widget:SetBackdropBorderColor(...) self.border = { ... } end
+function Widget:SetPropagateKeyboardInput(value) self.propagatesKeyboard = value end
+function Widget:EnableKeyboard(value) self.keyboardEnabled = value end
 function CreateFrame(_, name, parent)
     return setmetatable({ name = name, parent = parent }, Widget)
 end
@@ -83,7 +85,7 @@ assert(loadfile("ForgeGuildGreeter/Quality.lua"))("ForgeGuildGreeter", ns)
 assert(loadfile("ForgeGuildGreeter/UI.lua"))("ForgeGuildGreeter", ns)
 assert(loadfile("ForgeGuildGreeter/Minimap.lua"))("ForgeGuildGreeter", ns)
 local addon = assert(ns.Greeter)
-assert(addon.version == "0.4.0")
+assert(addon.version == "0.4.1")
 addon:Initialize()
 assert(requestCount >= 1)
 assert(addon.frame and addon.minimapButton)
@@ -153,6 +155,11 @@ local onlineAfter = addon:PickMessage("online")
 assert(onlineBefore ~= onlineAfter)
 assert(#addon.db.onlineRotation.remaining == onlineRemaining - 1)
 
+-- The dispatcher must not intercept keys or send from timer callbacks.
+assert(addon.keyboardReady)
+assert(addon.keyboardFrame and addon.keyboardFrame.propagatesKeyboard)
+assert(addon.keyboardFrame.keyboardEnabled)
+assert(type(addon.keyboardFrame.scripts.OnKeyDown) == "function")
 -- Initial roster may already contain dozens online: zero greeting messages.
 addon:ProcessRoster()
 assert(addon.ready)
@@ -166,7 +173,7 @@ addon:ProcessRoster()
 assert(#addon.queue == 1 and addon.queue[1].kind == "online")
 addon:ProcessRoster()
 assert(#addon.queue == 1, "Duplicate roster update must not duplicate messages")
-addon:ProcessQueue()
+addon:ProcessQueue(true)
 assert(#outgoing == 1)
 assert(outgoing[1].channel == "GUILD")
 assert(outgoing[1].message:find("Morg", 1, true))
@@ -179,7 +186,7 @@ addon:ProcessRoster()
 now = now + 3
 addon:ProcessRoster()
 assert(#addon.queue == 1 and addon.queue[1].kind == "welcome")
-addon:ProcessQueue()
+addon:ProcessQueue(true)
 assert(#outgoing == 2)
 assert(outgoing[2].channel == "GUILD")
 assert(outgoing[2].message:find("Thrall", 1, true))
@@ -226,7 +233,7 @@ guild[#guild + 1] = { name = "Tester", rank = "Raider", online = false, level = 
 addon:ProcessRoster()
 now = now + 3
 addon:ProcessRoster()
-addon:ProcessQueue()
+addon:ProcessQueue(true)
 assert(#outgoing == 2, "Local channel must not send actual guild chat")
 assert(addon.db.stats.welcome == 1, "LOCAL preview should not consume welcome rotation")
 
@@ -258,7 +265,7 @@ guild[#guild + 1] = { name = "WhisperTest", rank = "Raider", online = true }
 addon:ProcessRoster()
 now = now + 3
 addon:ProcessRoster()
-addon:ProcessQueue()
+addon:ProcessQueue(true)
 assert(#outgoing == 3)
 assert(outgoing[3].channel == "WHISPER" and outgoing[3].target == "WhisperTest")
 
@@ -288,7 +295,7 @@ addon:ProcessRoster()
 now = now + 3
 addon:ProcessRoster()
 assert(#addon.queue == 1)
-addon:ProcessQueue()
+addon:ProcessQueue(true)
 assert(#outgoing == 3 and #addon.queue == 0)
 addon.db.discordEnabled = false
 
@@ -301,7 +308,7 @@ addon:ProcessRoster()
 assert(#addon.queue == 0, "Unconfirmed joins must never be queued")
 table.remove(guild, #guild)
 addon:ProcessRoster()
-addon:ProcessQueue()
+addon:ProcessQueue(true)
 assert(#outgoing == 3, "Do not welcome a member who already left")
 
 -- Pause clears pending greetings immediately (not just at next queue tick).
@@ -438,6 +445,27 @@ addon:ProcessRoster()
 assert(#addon.queue == 1 and addon.queue[1].kind == "welcome")
 addon.queue, addon.queuedKeys = {}, {}
 
+-- A timer callback must never send chat. A real keyboard event may flush
+-- one pending item without swallowing the movement key itself.
+now = now + 30
+addon.db.manualMode = false
+addon.db.channels.welcome = "GUILD"
+guild[#guild + 1] = {
+    name = "KeyPressJoin", rank = "Raider", online = true, class = "Warlock", level = 25
+}
+addon:ProcessRoster()
+now = now + 3
+addon:ProcessRoster()
+assert(#addon.queue == 1)
+local beforeKeyPress = #outgoing
+addon:ProcessQueue(false)
+assert(#outgoing == beforeKeyPress and #addon.queue == 1,
+    "Timer callbacks may not call protected chat actions")
+addon.keyboardFrame.scripts.OnKeyDown(addon.keyboardFrame, "W")
+assert(#outgoing == beforeKeyPress + 1 and #addon.queue == 0)
+assert(addon.db.lastSent["welcome:keypressjoin"])
+assert(addon.keyboardFrame.propagatesKeyboard, "Keyboard event must pass through")
+
 -- A failed automatic send must leave the shuffle bag and cooldown unchanged,
 -- and it must be recoverable via a real UI-click fallback.
 now = now + 30
@@ -457,7 +485,7 @@ local remaining = #addon.db.welcomeRotation.remaining
 local outgoingBeforeFail = #outgoing
 local savedSender = C_ChatInfo.SendChatMessage
 C_ChatInfo.SendChatMessage = function() error("chat protected") end
-addon:ProcessQueue()
+addon:ProcessQueue(true)
 assert(#outgoing == outgoingBeforeFail)
 assert(#addon.queue == 0 and addon:PendingCount() == 1)
 assert(addon.db.welcomeRotation.lastIndex == lastIndex)
@@ -484,7 +512,7 @@ now = now + 3
 addon:ProcessRoster()
 assert(#addon.queue == 1)
 local beforeManual = #outgoing
-addon:ProcessQueue()
+addon:ProcessQueue(true)
 assert(#outgoing == beforeManual and addon:PendingCount() == 1)
 addon.ui.sendNextButton.scripts.OnClick()
 assert(#outgoing == beforeManual + 1 and addon:PendingCount() == 0)
@@ -501,7 +529,7 @@ now = now + 3
 addon:ProcessRoster()
 local beforeLocal = addon:SnapshotRotation("welcome")
 local sentBeforeLocal = #outgoing
-addon:ProcessQueue()
+addon:ProcessQueue(true)
 assert(#outgoing == sentBeforeLocal)
 assert(addon.db.welcomeRotation.lastIndex == beforeLocal.lastIndex)
 assert(#addon.db.welcomeRotation.remaining == #beforeLocal.remaining)
@@ -555,5 +583,33 @@ assert(addon.db.messages.online[15] == bigger[15])
 assert(#addon.db.archivedOnlineMessages == 3)
 assert(addon.db.archivedOnlineMessages[1] == "CUSTOM ONLINE MESSAGE 16 for {player}")
 
-print("FORGE GuildGreeter v0.4: 15+15 fixed editable greetings, unique rotations, migration and smoke checks passed.")
+-- The client can emit ADDON_ACTION_BLOCKED without throwing Lua errors.
+-- The callback must capture the function and move future auto-sends to the
+-- already existing manual fallback, rather than printing a warning every tick.
+local normalChat = C_ChatInfo.SendChatMessage
+C_ChatInfo.SendChatMessage = function()
+    addon.eventFrame.scripts.OnEvent(addon.eventFrame,
+        "ADDON_ACTION_BLOCKED", "ForgeGuildGreeter", "C_ChatInfo.SendChatMessage")
+end
+addon.chatBlocked = false
+local ok, reason = addon:TryChat("safe test", "GUILD")
+assert(not ok and reason:find("Protected chat"))
+assert(addon.chatBlocked)
+assert(addon.blockedDuringSend)
+assert(addon.lastProtectedAction == "C_ChatInfo.SendChatMessage")
+assert(addon.db.lastProtectedAction == "C_ChatInfo.SendChatMessage")
+C_ChatInfo.SendChatMessage = normalChat
+addon.chatBlocked = false
+addon.eventFrame.scripts.OnEvent(addon.eventFrame,
+    "ADDON_ACTION_BLOCKED", "SomeOtherAddon", "GuildRoster")
+assert(not addon.rosterPollingBlocked, "Unrelated add-ons may not disable GuildGreeter")
+addon.eventFrame.scripts.OnEvent(addon.eventFrame,
+    "ADDON_ACTION_BLOCKED", "ForgeGuildGreeter", "C_GuildInfo.GuildRoster")
+assert(addon.rosterPollingBlocked)
+local oldRequests = requestCount
+addon:RequestRoster()
+assert(requestCount == oldRequests, "Blocked roster polling should stop")
+addon.rosterPollingBlocked = false
+
+print("FORGE GuildGreeter v0.4.1: no background sends, safe keyboard dispatch, protected action logging and 15+15 greetings passed.")
 
