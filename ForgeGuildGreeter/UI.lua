@@ -247,13 +247,17 @@ function Greeter:CreateUI()
         Greeter:LoadSelectedMessage()
         Greeter:Print("Original online greeting restored.")
     end)
-    Label(editor, "LIVE PREVIEW  -  NOT SENT TO GUILD CHAT", 0, -243, "GameFontNormalSmall", C.gold)
+    Label(editor, "PREVIEW / VARS: {player} {guild} {class} {level} {rank}", 0, -243,
+        "GameFontNormalSmall", C.gold)
     local previewText = Label(editor, "", 0, -268, "GameFontHighlightSmall")
     previewText:SetWidth(466)
     previewText:SetJustifyH("LEFT")
     previewText:SetWordWrap(true)
 
-    local variablesLabel = Label(p, "VARIABLES: {player} {full} {guild} {class} {level} {rank}", 20, -559)
+    local queueLabel = Label(p, "", 20, -560, "GameFontHighlightSmall", C.gold)
+    local sendNextButton = Button(p, "SEND NEXT", 309, -546, 182, 32, function()
+        Greeter:SendNextPending()
+    end)
     local footer = Label(p, "NOVYX FORGE  |  /fgreet  |  v" .. self.version ..
         "  |  R-click minimap: pause", 20, -588)
     footer:SetTextColor(0.55, 0.55, 0.52)
@@ -311,8 +315,12 @@ function Greeter:CreateUI()
         Greeter.db.quietEnd = (Greeter.db.quietEnd + 1) % 24
         Greeter:RefreshUI()
     end)
-    Label(policyPage, "Quiet hours use the WoW server clock. Auto chat may be restricted.",
-        0, -220, "GameFontHighlightSmall", C.muted)
+    local manualBtn = Button(policyPage, "", 0, -214, 230, 35, function()
+        Greeter.db.manualMode = not Greeter.db.manualMode
+        Greeter:RefreshUI()
+    end)
+    Label(policyPage, "Manual mode queues greetings.", 248, -223,
+        "GameFontHighlightSmall", C.muted)
     local resetButton = Button(policyPage, "RESTORE DEFAULT SETTINGS", 0, -257, 472, 37, function()
         local u = Greeter.ui
         local now = Greeter:Now()
@@ -370,6 +378,9 @@ function Greeter:CreateUI()
     about:SetPoint("TOPLEFT", p, "TOPLEFT", 19, -238)
     Label(about, "RECENT ACTIVITY  -  MOST RECENT FIRST", 0, 0,
         "GameFontNormal", C.gold)
+    local setupButton = Button(about, "CHECK SETUP", 328, -2, 144, 28, function()
+        Greeter:RunSetupCheck()
+    end)
     Label(about, "REQUESTED = chat API called; not proof of delivery.", 0, -23,
         "GameFontHighlightSmall", C.muted)
     local activityRows = {}
@@ -392,10 +403,11 @@ function Greeter:CreateUI()
         tabs = tabs, statusLabel = statusLabel, indexLabel = indexLabel,
         messageEdit = messageEdit, channelBtn = channelBtn,
         addButton = addButton, deleteButton = deleteButton,
-        uniqueHint = uniqueHint, variablesLabel = variablesLabel,
+        uniqueHint = uniqueHint, queueLabel = queueLabel, sendNextButton = sendNextButton,
         restoreOnlineBtn = restoreOnlineBtn,
         previewText = previewText,
         leaderBtn = leaderBtn, randomBtn = randomBtn, quietBtn = quietBtn,
+        manualBtn = manualBtn, setupButton = setupButton,
         onlineCdBtn = onlineCdBtn, cdBtn = cdBtn, gapBtn = gapBtn,
         limitBtn = limitBtn, startBtn = startBtn, endBtn = endBtn,
         resetButton = resetButton, discordBtn = discordBtn,
@@ -448,7 +460,13 @@ function Greeter:UpdatePanel()
     local kind = self:CurrentKind()
     local isEditor = u.tab == "welcome" or u.tab == "online"
     if isEditor then u.editor:Show() else u.editor:Hide() end
-    u.variablesLabel:SetShown(isEditor)
+    local auto = #self.queue
+    local manual = self:PendingCount()
+    u.queueLabel:SetText("WAITING: " .. auto .. "  |  MANUAL: " .. manual)
+    u.sendNextButton:SetEnabled(manual > 0 and not self.db.paused)
+    u.sendNextButton:SetAlpha(manual > 0 and not self.db.paused and 1 or 0.4)
+    u.sendNextButton.label:SetText(manual > 0 and "SEND NEXT (" .. manual .. ")"
+        or "NO PENDING")
     if u.tab == "settings" then u.settings:Show() else u.settings:Hide() end
     if u.tab == "about" then u.about:Show() else u.about:Hide() end
     for tab, button in pairs(u.tabs) do
@@ -486,6 +504,8 @@ function Greeter:UpdatePanel()
         (self.db.leaderOnly and "ON" or "OFF"))
     u.randomBtn.label:SetText("SHUFFLED WELCOMES: " ..
         (self.db.randomMessages and "ON" or "OFF"))
+    u.manualBtn.label:SetText("MANUAL MODE: " ..
+        (self.db.manualMode and "ON" or "OFF"))
     u.quietBtn.label:SetText("QUIET HOURS: " ..
         (self.db.quietEnabled and "ON" or "OFF"))
     u.onlineCdBtn.label:SetText("ONLINE COOLDOWN: " ..
