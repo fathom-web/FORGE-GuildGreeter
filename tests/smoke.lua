@@ -372,6 +372,8 @@ for i = 1, 5 do
 end
 
 
+rankIndex = 0 -- Restore Guild Master rank after preceding reset test.
+
 -- First-run setup is a real button; never assumes that server delivery works.
 assert(addon.ui.setupButton and addon.ui.setupButton.scripts.OnClick)
 addon.db.setupSeen = false
