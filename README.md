@@ -4,7 +4,7 @@
 
 A customizable, lightweight World of Warcraft **Forever** guild welcome addon by [Novyx Forge](https://wow.novyxforge.com/). Built using the dark charcoal/gold native UI design language of **FORGE AFK — DAD MODE**.
 
-**Version: 0.4.1** — development build; in-game verification is required before CurseForge publication.
+**Version: 0.4.2** — development build; in-game verification is required before CurseForge publication.
 
 ## What it does
 
@@ -18,7 +18,7 @@ A customizable, lightweight World of Warcraft **Forever** guild welcome addon by
 - **Optional Discord reminder:** edit the appended text. Disabled by default; your server invite link is not guessed or hardcoded.
 - **Anti-spam:** default **24-hour cooldown for online greetings** (adjustable 1/6/12/24/48 hours), separate 5–120 minute welcome cooldown, 5–30 second spacing, and maximum 1–8 announcements per five minutes. Stale queue entries expire.
 - **Quiet hours:** optional start/end hours using WoW's **server clock**, including midnight-crossing windows.
-- **Guild Master only:** enabled by default to reduce duplicate automated greetings if several guildmates install the addon. You can disable this to allow other ranks, but multiple broadcasters may duplicate greetings.
+- **Guild Master only:** enabled by default to reduce duplicate broadcasters. If you are using a different guild character, enable this character deliberately via `/fgreet enable` or turn off Guild Master Only in Advanced → Behavior. **Only one character/client should broadcast per guild** or duplicate greetings may occur.
 - **Randomized or sequential texts.** Both categories use independent 15-message cycles without repeats. Changing the shuffle preference takes effect after the current cycle ends, preserving unused messages.
 - **Saved settings, moveable panel, draggable minimap icon.** Right-click the minimap icon to pause/resume all announcements.
 - **Safe preview and click-to-send test:** each selected message has Preview and Send Test. Send Test uses the selected channel, prefixes the message with [TEST], and never advances the welcome rotation or automated cooldowns. The recipient for test whispers is your own character.
@@ -26,7 +26,7 @@ A customizable, lightweight World of Warcraft **Forever** guild welcome addon by
 - **Activity log:** last ten local previews, chat submission attempts, blocks and resets. Status shows ACTIVE, PAUSED, MANUAL MODE or CHAT BLOCKED (where API errors are detectable).
 - **Manual fallback:** when the automatic chat API rejects a greeting, that event is held in a 20-item, session-only manual queue. Click **SEND NEXT** to attempt it explicitly. Alternatively enable **Manual Mode** in Advanced → Behavior to hold all new greetings for your confirmation. Events expire after 30 minutes and are checked against the live guild roster before sending.
 - **No false consumption:** failed, oversized and LOCAL-preview messages do not consume a slot from either 15-message rotation or set the send cooldown.
-- **Forever safe auto-posting:** on WoW Forever, queued greetings are submitted on your **next genuine keyboard input**, rather than inside a background timer. Your key still reaches the game (the listener propagates keyboard input). You do not need to click Send Next or open the addon. If you are AFK, messages wait until you interact again; stale events expire after 3 minutes. When safe input propagation is unavailable, the addon automatically uses the existing manual queue rather than attempting blocked background chat.
+- **Automatic guild chat restored:** the WoW APIs permit `GUILD`, `OFFICER` and `WHISPER` addon chat without a keyboard event. Version 0.4.2 removes the keyboard-interception frame introduced in v0.4.1 and resumes automatic sends from the regular queue timer. `SAY`, `YELL` and public `CHANNEL` messages are not offered. Messages are never sent when Guild Master Only prevents this character, manual mode is on, or a blocked action has been observed.
 - **Protected-action diagnosis:** when Forever reports an action blocked by FORGE GuildGreeter, the exact function is saved in the activity log and SavedVariables. Chat blocks move future outgoing greetings to the manual queue; blocked roster polling is disabled to avoid repeated UI errors.
 - **First-run check:** on first installation the panel opens with a pointer to **Activity → CHECK SETUP**. Check guild membership, rank, roster readiness and chat API presence; verify real delivery with SEND TEST and a guildmate.
 - **Restore defaults:** individual original messages can be restored. The Advanced → Behavior reset requires a second click within 15 seconds and preserves all customized greeting templates.
@@ -68,7 +68,8 @@ The intended TOC interface is **16001**, following the known-working FORGE AFK a
 | \`/fgreet welcome\` | Toggle new-member welcomes |
 | \`/fgreet online\` | Toggle member-online greetings |
 | \`/fgreet minimap\` | Show/hide minimap icon |
-| \`/fgreet status\` | Guild roster / broadcast status |
+| \`/fgreet status\` | Guild roster, automatic/manual mode, active sender permission and queue status |
+| \`/fgreet enable\` | Allow automatic announcements on this character even if it is not Guild Master; only do this on one guild character |
 | \`/fgreet check\` | Run first-use diagnostic checklist |
 | \`/fgreet manual\` | Toggle explicit click-to-send mode |
 | \`/fgreet help\` | Short command help |
@@ -88,9 +89,9 @@ There is no server-to-server synchronization among installations. The default Gu
 
 ## Important: client chat restrictions
 
-The addon attempts messages through the standard WoW chat API. **Some versions of WoW block automated chat messages that are not initiated by a player click or keypress.** The addon does not bypass client restrictions. Therefore the real automatic guild-chat behavior must be verified in WoW Forever; if that server/client blocks it, the addon needs an approved/manual-send fallback.
+The addon attempts messages through the standard WoW chat API. Under WoW chat API rules, **GUILD**, **OFFICER** and **WHISPER** can be sent from regular addon callbacks, unlike restricted public channels. Real delivery must still be checked in WoW Forever; the addon does not bypass any client restrictions. If the client blocks a call, the existing **SEND NEXT** fallback is available.
 
-**Note for v0.4.1:** keyboard delivery is a targeted fix based on Forever's modern chat restrictions and similar addon behavior. It still requires a real guild join/login test; keyboard-based dispatch is not proof that this particular Forever build permits the chat channel. If the game blocks a call, our addon stops repeating it and records the blocked function.
+**v0.4.2 correction:** v0.4.1 incorrectly required a keyboard event for guild chat and could silently stop posting. The keyboard listener was removed. The Guild Master Only default remains an intentional anti-duplicate setting, and `/fgreet status` now explicitly reports when it prevents this character from announcing.
 
 **REQUESTED** in the Activity tab means the chat API accepted an attempted call; it is **not** evidence that the game server delivered the message. **CHAT BLOCKED** only appears for observable API failures; silently discarded messages cannot be detected. Use **Preview** (local) and **Send Test** (explicit click) to diagnose. Do not publish this as a confirmed auto-greeter before live testing.
 
