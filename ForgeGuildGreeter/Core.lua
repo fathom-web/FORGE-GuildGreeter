@@ -2,12 +2,13 @@ local addonName, ns = ...
 local Greeter = {}
 ns.Greeter = Greeter
 
-Greeter.version = "0.3.0"
+Greeter.version = "0.4.0"
 Greeter.brand = "NOVYX FORGE"
 Greeter.channels = { "GUILD", "WHISPER", "OFFICER", "LOCAL" }
 Greeter.cooldowns = { 5, 15, 30, 60, 120 }
 Greeter.spacings = { 5, 10, 15, 30 }
 Greeter.limits = { 1, 2, 3, 5, 8 }
+Greeter.messageCount = 15
 Greeter.defaults = {
     welcome = {
         "Welcome {player} to {guild}! Your repair bills are now our entertainment. FOR THE HORDE!",
@@ -15,12 +16,33 @@ Greeter.defaults = {
         "Welcome aboard, {player}! Bad pulls, terrible jokes and good times guaranteed.",
         "Everybody wave! {player} just joined {guild}. No refunds!",
         "Welcome {player}! Leave your dignity at the door. We lost ours several wipes ago.",
+        "{player} just joined {guild}! Please sign the waiver before your first dungeon wipe.",
+        "Hold the door! {player} is joining us. Somebody hide the guild bank.",
+        "Welcome {player}! We promise nothing except questionable pulls and excellent company.",
+        "New recruit: {player}! Your first quest is finding out who keeps pulling early.",
+        "{guild} welcomes {player}! Warning: laughter may reduce your damage output.",
+        "{player} has entered the guild. Group therapy now has one more participant.",
+        "All hail {player}! The legendary loot is fictional, but the friendship is real.",
+        "Welcome {player}! We are the reason your healer drinks between pulls.",
+        "Fresh meat! Just kidding, {player}. We only sacrifice volunteers. Mostly.",
+        "{player}, welcome to {guild}! Bring snacks, patience, and a spare repair bill.",
     },
     online = {
         "Look who's back! {player} has returned. Hide the good loot!",
         "{player} is online! The respawn timer on our chaos has ended.",
         "Welcome back, {player}! Your daily dose of questionable decisions awaits.",
         "Breaking news: {player} logged in. The guild's collective IQ remains unchanged.",
+        "{player} is back! The mobs were beginning to feel safe.",
+        "Attention, {guild}: {player} has logged in. This is not a drill.",
+        "Welcome back, {player}! Your repair bill missed you.",
+        "{player} just appeared online. Somewhere, a healer sighed.",
+        "Look alive, guild! {player} is here and probably needs a summon.",
+        "The legends were true: {player} has returned to Azeroth.",
+        "{player} is online again! We were almost behaving ourselves.",
+        "Welcome back, {player}! Your seat at the chaos table is still warm.",
+        "Another day, another adventure. {player} has joined the party!",
+        "It's {player}! Everybody pretend we know the tactics this time.",
+        "{player} logged in! Time to turn perfectly good plans into glorious disasters.",
     },
 }
 Greeter.quietHours = { start = 23, finish = 8 }
@@ -146,13 +168,18 @@ end
 
 -- Welcome messages have five fixed editable slots. Their shuffled-bag state
 -- is saved, so reloading the game does not restart the cycle or repeat a slot.
-function Greeter:PickWelcomeMessage()
-    local items = self.db.messages.welcome
-    local rotation = self.db.welcomeRotation
-    if not rotation then
-        rotation = { remaining = {}, lastIndex = 0 }
-        self.db.welcomeRotation = rotation
-    end
+-- Both message types use independent persisted shuffle bags. One full round
+-- plays every editable slot exactly once, with no identical boundary message.
+function Greeter:GetRotation(kind)
+    if kind == "welcome" then return self.db.welcomeRotation end
+    if kind == "online" then return self.db.onlineRotation end
+    return nil
+end
+
+function Greeter:PickMessage(kind)
+    local items = self.db.messages[kind]
+    local rotation = self:GetRotation(kind)
+    if not items or #items == 0 or not rotation then return nil end
     if #rotation.remaining == 0 then
         local bag = {}
         if self.db.randomMessages then
@@ -162,7 +189,6 @@ function Greeter:PickWelcomeMessage()
                 bag[i], bag[j] = bag[j], bag[i]
             end
         else
-            -- Preserve the previous choice when switching rotation modes.
             local start = (rotation.lastIndex % #items) + 1
             for i = 1, #items do
                 bag[i] = ((start + i - 2) % #items) + 1
@@ -178,23 +204,8 @@ function Greeter:PickWelcomeMessage()
     return items[index]
 end
 
-function Greeter:PickMessage(kind)
-    local items = self.db.messages[kind]
-    if not items or #items == 0 then return nil end
-    if kind == "welcome" then
-        return self:PickWelcomeMessage()
-    end
-    local index
-    if self.db.randomMessages and #items > 1 then
-        index = math.random(#items)
-        if index == self.lastPicked[kind] then
-            index = (index % #items) + 1
-        end
-    else
-        index = ((self.lastPicked[kind] or 0) % #items) + 1
-    end
-    self.lastPicked[kind] = index
-    return items[index]
+function Greeter:PickWelcomeMessage()
+    return self:PickMessage("welcome")
 end
 
 function Greeter:Compose(kind, member)
@@ -390,11 +401,9 @@ function Greeter:SaveMessage(kind, index, text)
     end
     text = type(text) == "string" and text:match("^%s*(.-)%s*$") or ""
     if text == "" or #text > 220 then return false, "Use 1-220 characters." end
-    if kind == "welcome" then
-        for i, existing in ipairs(items) do
-            if i ~= index and existing == text then
-                return false, "All five welcome messages must be different."
-            end
+    for i, existing in ipairs(items) do
+        if i ~= index and existing == text then
+            return false, "All 15 " .. kind .. " messages must be different."
         end
     end
     items[index] = text
@@ -402,26 +411,18 @@ function Greeter:SaveMessage(kind, index, text)
     return true
 end
 
-function Greeter:AddMessage(kind, text)
-    local items = self.db.messages[kind]
-    if not items then return false, "Invalid message type." end
-    if kind == "welcome" then return false, "Welcome messages use exactly five editable slots." end
-    if #items >= 50 then return false, "Maximum 50 messages per type." end
-    text = type(text) == "string" and text:match("^%s*(.-)%s*$") or ""
-    if text == "" or #text > 220 then return false, "Use 1-220 characters." end
-    items[#items + 1] = text
-    self:RefreshUI()
-    return true, #items
+function Greeter:AddMessage(kind)
+    if kind ~= "welcome" and kind ~= "online" then
+        return false, "Invalid message type."
+    end
+    return false, "Each greeting type has exactly 15 editable slots."
 end
 
-function Greeter:DeleteMessage(kind, index)
-    local items = self.db.messages[kind]
-    if not items or not items[index] then return false, "Invalid message." end
-    if kind == "welcome" then return false, "Edit one of the five fixed welcome messages instead." end
-    if #items == 1 then return false, "Keep at least one message." end
-    table.remove(items, index)
-    self:RefreshUI()
-    return true
+function Greeter:DeleteMessage(kind)
+    if kind ~= "welcome" and kind ~= "online" then
+        return false, "Invalid message type."
+    end
+    return false, "Edit one of the 15 fixed messages instead."
 end
 
 function Greeter:RefreshUI()
@@ -443,67 +444,83 @@ function Greeter:Initialize()
     if type(db.enabled.welcome) ~= "boolean" then db.enabled.welcome = true end
     if type(db.enabled.online) ~= "boolean" then db.enabled.online = true end
     if type(db.messages) ~= "table" then db.messages = {} end
-    for kind, defaults in pairs(self.defaults) do
-        if type(db.messages[kind]) ~= "table" or #db.messages[kind] == 0 then
-            db.messages[kind] = CopyArray(defaults)
+    -- Preserve existing user-edited messages in their original slot. Fill
+    -- missing slots to fifteen; never overwrite custom 1-5 from v0.3.
+    -- If a legacy build had >15 online messages, archive the extras.
+    for _, kind in ipairs({ "welcome", "online" }) do
+        local defaults = self.defaults[kind]
+        local items = db.messages[kind]
+        if type(items) ~= "table" then
+            items = CopyArray(defaults)
+            db.messages[kind] = items
         end
-    end
-    -- Upgrade older installations without overwriting edited welcome slots.
-    -- Any extras from experimental builds are archived in SavedVariables.
-    local welcomes = db.messages.welcome
-    if #welcomes > 5 then
-        if type(db.archivedWelcomeMessages) ~= "table" then
-            db.archivedWelcomeMessages = {}
+        local originalCount = #items
+        if originalCount > self.messageCount then
+            local archiveKey = kind == "welcome"
+                and "archivedWelcomeMessages" or "archivedOnlineMessages"
+            if type(db[archiveKey]) ~= "table" then db[archiveKey] = {} end
+            for i = self.messageCount + 1, originalCount do
+                db[archiveKey][#db[archiveKey] + 1] = items[i]
+            end
+            for i = originalCount, self.messageCount + 1, -1 do items[i] = nil end
         end
-        for i = 6, #welcomes do
-            db.archivedWelcomeMessages[#db.archivedWelcomeMessages + 1] = welcomes[i]
+        for i = #items + 1, self.messageCount do
+            items[i] = defaults[i]
         end
-        for i = #welcomes, 6, -1 do welcomes[i] = nil end
-    end
-    for i = #welcomes + 1, 5 do
-        welcomes[i] = self.defaults.welcome[i]
-    end
-    -- A user can still edit each message after migration; use distinct
-    -- defaults when legacy data contains duplicate strings.
-    for i = 1, 5 do
-        if type(welcomes[i]) ~= "string" or welcomes[i] == "" or #welcomes[i] > 220 then
-            welcomes[i] = self.defaults.welcome[i]
-        end
-        for j = 1, i - 1 do
-            if welcomes[i] == welcomes[j] then
-                welcomes[i] = self.defaults.welcome[i]
-                local suffix = 2
-                while true do
-                    local unique = true
-                    for k = 1, i - 1 do
-                        if welcomes[i] == welcomes[k] then unique = false; break end
+        for i = 1, self.messageCount do
+            if type(items[i]) ~= "string" or items[i] == "" or #items[i] > 220 then
+                items[i] = defaults[i]
+            end
+            -- Legacy duplicates cannot remain in a unique 15-message set.
+            -- Preserve the first copy and substitute a distinct fallback.
+            local distinct = false
+            local candidateNumber = 1
+            while not distinct do
+                distinct = true
+                for j = 1, i - 1 do
+                    if items[i] == items[j] then
+                        distinct = false
+                        if candidateNumber == 1 then
+                            items[i] = defaults[i]
+                        else
+                            items[i] = (kind == "welcome" and "Welcome " or "Welcome back ")
+                                .. "{player}! " .. kind .. " greeting " .. candidateNumber .. "."
+                        end
+                        candidateNumber = candidateNumber + 1
+                        break
                     end
-                    if unique then break end
-                    welcomes[i] = "Welcome {player}! Greetings from {guild}. Message " .. tostring(suffix) .. "."
-                    suffix = suffix + 1
                 end
             end
         end
-    end
-    if type(db.welcomeRotation) ~= "table" then db.welcomeRotation = {} end
-    local rotation = db.welcomeRotation
-    if type(rotation.lastIndex) ~= "number" or rotation.lastIndex < 0
-        or rotation.lastIndex > 5 or rotation.lastIndex ~= math.floor(rotation.lastIndex) then
-        rotation.lastIndex = 0
-    end
-    if type(rotation.remaining) ~= "table" then rotation.remaining = {} end
-    local seen = {}
-    local valid = #rotation.remaining <= 5
-    for _, index in ipairs(rotation.remaining) do
-        if type(index) ~= "number" or index < 1 or index > 5
-            or index ~= math.floor(index) or seen[index] then
-            valid = false
-            break
+        local key = kind == "welcome" and "welcomeRotation" or "onlineRotation"
+        local rotation = db[key]
+        if type(rotation) ~= "table" then
+            rotation = {}
+            db[key] = rotation
         end
-        seen[index] = true
-    end
-    if not valid or (#rotation.remaining > 0 and rotation.remaining[1] == rotation.lastIndex) then
-        rotation.remaining = {}
+        if type(rotation.lastIndex) ~= "number" or rotation.lastIndex < 0
+            or rotation.lastIndex > self.messageCount
+            or rotation.lastIndex ~= math.floor(rotation.lastIndex) then
+            rotation.lastIndex = 0
+        end
+        if type(rotation.remaining) ~= "table" then rotation.remaining = {} end
+        local seen = {}
+        local valid = #rotation.remaining <= self.messageCount
+        for _, index in ipairs(rotation.remaining) do
+            if type(index) ~= "number" or index < 1
+                or index > self.messageCount or index ~= math.floor(index)
+                or seen[index] then
+                valid = false
+                break
+            end
+            seen[index] = true
+        end
+        -- Resize begins a fresh fifteen-slot cycle while retaining the last
+        -- choice, so even the upgrade cannot greet twice in a row.
+        if originalCount ~= self.messageCount or not valid
+            or (#rotation.remaining > 0 and rotation.remaining[1] == rotation.lastIndex) then
+            rotation.remaining = {}
+        end
     end
     if type(db.channels) ~= "table" then db.channels = {} end
     for _, kind in ipairs({ "welcome", "online" }) do
