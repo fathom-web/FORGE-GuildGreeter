@@ -22,17 +22,17 @@ jobs:
           for f in ForgeGuildGreeter/ForgeGuildGreeter.toc ForgeGuildGreeter/ForgeGuildGreeter_Forever.toc ForgeGuildGreeter/Core.lua ForgeGuildGreeter/Quality.lua ForgeGuildGreeter/UI.lua ForgeGuildGreeter/Minimap.lua; do
             test -s "$f"
           done
-          grep -q '## Version: 0.4.1' ForgeGuildGreeter/ForgeGuildGreeter.toc
+          grep -q '## Version: 0.4.2' ForgeGuildGreeter/ForgeGuildGreeter.toc
       - name: Create ZIP
         run: |
           set -euo pipefail
-          zip -9 -r FORGE_GuildGreeter_0.4.1.zip ForgeGuildGreeter -x '*/.DS_Store' '*__MACOSX*'
-          unzip -t FORGE_GuildGreeter_0.4.1.zip
-          unzip -Z1 FORGE_GuildGreeter_0.4.1.zip
+          zip -9 -r FORGE_GuildGreeter_0.4.2.zip ForgeGuildGreeter -x '*/.DS_Store' '*__MACOSX*'
+          unzip -t FORGE_GuildGreeter_0.4.2.zip
+          unzip -Z1 FORGE_GuildGreeter_0.4.2.zip
       - name: Store artifact for maintainer
         uses: actions/upload-artifact@v4
         with:
-          name: FORGE_GuildGreeter_0.4.1_CurseForge_upload
-          path: FORGE_GuildGreeter_0.4.1.zip
+          name: FORGE_GuildGreeter_0.4.2_CurseForge_upload
+          path: FORGE_GuildGreeter_0.4.2.zip
           retention-days: 14
           if-no-files-found: error
