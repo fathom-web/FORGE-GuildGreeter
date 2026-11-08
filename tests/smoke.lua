@@ -83,7 +83,7 @@ assert(loadfile("ForgeGuildGreeter/Quality.lua"))("ForgeGuildGreeter", ns)
 assert(loadfile("ForgeGuildGreeter/UI.lua"))("ForgeGuildGreeter", ns)
 assert(loadfile("ForgeGuildGreeter/Minimap.lua"))("ForgeGuildGreeter", ns)
 local addon = assert(ns.Greeter)
-assert(addon.version == "0.3.0")
+assert(addon.version == "0.4.0")
 addon:Initialize()
 assert(requestCount >= 1)
 assert(addon.frame and addon.minimapButton)
@@ -92,24 +92,48 @@ assert(addon.db.enabled.welcome and addon.db.enabled.online)
 assert(addon.db.channels.welcome == "GUILD")
 assert(addon.db.cooldownMinutes == 30)
 assert(addon.ui.tab == "welcome")
-assert(#addon.db.messages.welcome == 5, "Exactly five welcome templates expected")
+assert(#addon.db.messages.welcome == 15, "Exactly fifteen welcome templates expected")
+assert(#addon.db.messages.online == 15, "Exactly fifteen online templates expected")
 
--- Shuffled welcome bag must use each of the five distinct messages before
--- repeating, including across bag boundaries. All five remain editable.
+-- Shuffled welcome bag must use all fifteen distinct messages before
+-- repeating, including across bag boundaries. All fifteen remain editable.
 local previous = nil
 for round = 1, 4 do
     local seen = {}
-    for i = 1, 5 do
+    for i = 1, 15 do
         local message = addon:PickMessage("welcome")
-        assert(message and not seen[message], "Duplicate welcome in the same five-message round")
+        assert(message and not seen[message], "Duplicate welcome in the same fifteen-message round")
         assert(message ~= previous, "Consecutive welcome messages must always differ")
         seen[message] = true
         previous = message
     end
     local count = 0
     for _ in pairs(seen) do count = count + 1 end
-    assert(count == 5, "Every welcome must be used exactly once per round")
+    assert(count == 15, "Every welcome must be used exactly once per round")
 end
+
+-- The online welcome-back pool must independently use all 15 unique texts
+-- before repeating. A boundary must not duplicate the previous message.
+local lastOnline = nil
+for round = 1, 4 do
+    local seen = {}
+    for i = 1, 15 do
+        local message = addon:PickMessage("online")
+        assert(message and not seen[message], "Online message repeated in one fifteen-message round")
+        assert(message ~= lastOnline, "Online rotation repeated across rounds")
+        seen[message] = true
+        lastOnline = message
+    end
+    local count = 0
+    for _ in pairs(seen) do count = count + 1 end
+    assert(count == 15)
+end
+
+-- Neither rotation is consumed by viewing or saving other templates.
+assert(addon:SaveMessage("online", 1, "Welcome back {player}!"))
+assert(not addon:SaveMessage("online", 2, "Welcome back {player}!"),
+    "Online templates must also be unique")
+assert(addon:RestoreTemplate("online", 1))
 
 -- Simulating a UI reload: the persisted remaining bag must not reset.
 local lastBeforeReload = addon:PickMessage("welcome")
@@ -120,6 +144,14 @@ local nextWelcome = addon:PickMessage("welcome")
 assert(nextWelcome ~= lastBeforeReload)
 assert(#addon.db.welcomeRotation.remaining == pendingBeforeReload - 1)
 
+
+-- Online rotation survives UI reload without losing the remaining slots.
+local onlineBefore = addon:PickMessage("online")
+local onlineRemaining = #addon.db.onlineRotation.remaining
+addon.lastPicked = {}
+local onlineAfter = addon:PickMessage("online")
+assert(onlineBefore ~= onlineAfter)
+assert(#addon.db.onlineRotation.remaining == onlineRemaining - 1)
 
 -- Initial roster may already contain dozens online: zero greeting messages.
 addon:ProcessRoster()
@@ -168,13 +200,14 @@ assert(not addon:SaveMessage("welcome", 2, "Greetings {player} of {guild}!"),
     "Duplicate welcome templates must be rejected")
 assert(not addon:AddMessage("welcome", "Sixth welcome should be rejected"))
 assert(not addon:DeleteMessage("welcome", 1))
-local ok, idx = addon:AddMessage("online", "We see {class} {player}, level {level}.")
-assert(ok and idx == 5)
-assert(addon:Expand(addon.db.messages.online[idx],
+assert(not addon:AddMessage("online", "A sixteenth message should be rejected"))
+assert(not addon:DeleteMessage("online", 15))
+assert(addon:SaveMessage("online", 15, "We see {class} {player}, level {level}."))
+assert(addon:Expand(addon.db.messages.online[15],
     { name = "Thrall-Realm", rank = "Raider", class = "Shaman", level = 60 })
     == "We see Shaman Thrall, level 60.")
-assert(addon:DeleteMessage("online", idx))
-assert(#addon.db.messages.welcome == 5)
+assert(addon:RestoreTemplate("online", 15))
+assert(#addon.db.messages.welcome == 15)
 assert(not addon:SaveMessage("online", 1, ""))
 assert(not addon:DeleteMessage("welcome", 100))
 
@@ -358,16 +391,16 @@ assert(addon:RestoreTemplate("welcome", 1))
 assert(addon.db.messages.welcome[1] == addon.defaults.welcome[1])
 assert(addon:RestoreTemplate("online", 1))
 assert(addon.db.messages.online[1] == addon.defaults.online[1])
-local originalFive = {}
-for i = 1, 5 do originalFive[i] = addon.db.messages.welcome[i] end
+local originalFifteen = {}
+for i = 1, 15 do originalFifteen[i] = addon.db.messages.welcome[i] end
 addon.db.onlineCooldownHours = 1
 addon.db.enabled.welcome = false
 addon.ui.resetButton.scripts.OnClick()
 assert(not addon.db.enabled.welcome, "First reset click must only ask for confirmation")
 addon.ui.resetButton.scripts.OnClick()
 assert(addon.db.enabled.welcome and addon.db.onlineCooldownHours == 24)
-for i = 1, 5 do
-    assert(addon.db.messages.welcome[i] == originalFive[i],
+for i = 1, 15 do
+    assert(addon.db.messages.welcome[i] == originalFifteen[i],
         "Options reset should never delete customized greetings")
 end
 
@@ -457,7 +490,7 @@ addon.ui.sendNextButton.scripts.OnClick()
 assert(#outgoing == beforeManual + 1 and addon:PendingCount() == 0)
 addon.db.manualMode = false
 
--- A silent LOCAL preview should not advance the five-message cycle.
+-- A silent LOCAL preview should not advance the fifteen-message cycle.
 now = now + 20
 addon.db.channels.welcome = "LOCAL"
 guild[#guild + 1] = {
@@ -488,5 +521,39 @@ addon:ProcessRoster()
 assert(#addon.queue == 0, "Guild roster refill must not flood chat")
 assert(addon:PendingCount() == 0)
 
-print("FORGE GuildGreeter v0.3: mock checks passed.")
+-- Migrate old v0.3 SavedVariables: preserve edits in old welcome 1-5,
+-- old online 1-4, fill up to 15, and restart the 15-message bag safely.
+local oldWelcome = {}
+local oldOnline = {}
+for i = 1, 5 do oldWelcome[i] = addon.db.messages.welcome[i] end
+for i = 1, 4 do oldOnline[i] = addon.db.messages.online[i] end
+oldWelcome[1] = "Our customized welcome for {player}!"
+oldOnline[1] = "Our customized online message for {player}!"
+ForgeGuildGreeterDB.messages.welcome = oldWelcome
+ForgeGuildGreeterDB.messages.online = oldOnline
+ForgeGuildGreeterDB.welcomeRotation = { lastIndex = 1, remaining = { 2, 3, 4, 5 } }
+ForgeGuildGreeterDB.onlineRotation = nil
+addon:Initialize()
+assert(#addon.db.messages.welcome == 15 and #addon.db.messages.online == 15)
+assert(addon.db.messages.welcome[1] == "Our customized welcome for {player}!")
+assert(addon.db.messages.online[1] == "Our customized online message for {player}!")
+assert(#addon.db.welcomeRotation.remaining == 0)
+assert(#addon.db.onlineRotation.remaining == 0)
+local firstAfterMigration = addon:PickMessage("welcome")
+assert(firstAfterMigration ~= oldWelcome[1], "Migration must not repeat last welcome")
+
+-- A legacy online collection with >15 messages archives extras instead of
+-- losing them. The first 15 custom entries are not rewritten.
+local bigger = {}
+for i = 1, 18 do
+    bigger[i] = "CUSTOM ONLINE MESSAGE " .. i .. " for {player}"
+end
+ForgeGuildGreeterDB.messages.online = bigger
+addon:Initialize()
+assert(#addon.db.messages.online == 15)
+assert(addon.db.messages.online[15] == bigger[15])
+assert(#addon.db.archivedOnlineMessages == 3)
+assert(addon.db.archivedOnlineMessages[1] == bigger[16])
+
+print("FORGE GuildGreeter v0.4: 15+15 fixed editable greetings, unique rotations, migration and smoke checks passed.")
 
