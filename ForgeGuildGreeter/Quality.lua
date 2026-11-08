@@ -66,7 +66,10 @@ function Greeter:LogAction(status, kind, player, message)
 end
 
 function Greeter:StatusText()
-    if self.chatBlocked then return "CHAT BLOCKED - SEND PENDING" end
+    if self.chatBlocked then
+        return self:PendingCount() > 0 and "CHAT BLOCKED - SEND PENDING"
+            or "CHAT BLOCKED - USE SEND TEST"
+    end
     if self.db.paused then return "PAUSED" end
     if self.db.manualMode then return "MANUAL MODE" end
     if not self.ready then return "LOADING ROSTER" end
