@@ -25,7 +25,7 @@ A customizable, lightweight World of Warcraft **Forever** guild welcome addon by
 - **Optional personal welcome whisper:** a separately editable template, off by default and limited to one request per new member every 24 hours.
 - **Activity log:** last ten local previews, chat submission attempts, blocks and resets. Status shows ACTIVE, PAUSED, MANUAL MODE or CHAT BLOCKED (where API errors are detectable).
 - **Manual fallback:** when the automatic chat API rejects a greeting, that event is held in a 20-item, session-only manual queue. Click **SEND NEXT** to attempt it explicitly. Alternatively enable **Manual Mode** in Advanced → Behavior to hold all new greetings for your confirmation. Events expire after 30 minutes and are checked against the live guild roster before sending.
-- **No false consumption:** failed, oversized and LOCAL-preview messages do not consume a slot from the five-message welcome rotation or set the send cooldown.
+- **No false consumption:** failed, oversized and LOCAL-preview messages do not consume a slot from either 15-message rotation or set the send cooldown.
 - **First-run check:** on first installation the panel opens with a pointer to **Activity → CHECK SETUP**. Check guild membership, rank, roster readiness and chat API presence; verify real delivery with SEND TEST and a guildmate.
 - **Restore defaults:** individual original messages can be restored. The Advanced → Behavior reset requires a second click within 15 seconds and preserves all customized greeting templates.
 - **Roster burst protection:** ignores large incomplete roster drops and suppresses mass welcome floods after suspiciously large increases.
