@@ -483,7 +483,7 @@ function Greeter:UpdatePanel()
 
     u.leaderBtn.label:SetText("GUILD MASTER ONLY: " ..
         (self.db.leaderOnly and "ON" or "OFF"))
-    u.randomBtn.label:SetText("SHUFFLED WELCOMES: " ..
+    u.randomBtn.label:SetText("SHUFFLED ROTATIONS: " ..
         (self.db.randomMessages and "ON" or "OFF"))
     u.manualBtn.label:SetText("MANUAL MODE: " ..
         (self.db.manualMode and "ON" or "OFF"))
