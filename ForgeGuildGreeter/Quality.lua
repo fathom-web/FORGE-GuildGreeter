@@ -224,14 +224,14 @@ function Greeter:ResetOptions()
     self.queue, self.queuedKeys = {}, {}
     self.pendingManual, self.manualKeys = {}, {}
     self.chatBlocked = false
-    -- Reset options, never delete the user's five customized welcome texts.
+    -- Reset options, never delete the user's 30 customized greeting texts.
     self:LogAction("RESET", "settings", LocalPlayer(), "Options restored; messages retained")
     self:RefreshUI()
 end
 
 
 -- Snapshot the welcome shuffle bag before attempting to send. A failed API
--- call must not silently spend one of the five customizable welcome messages.
+-- call must not silently spend a message from either 15-entry rotation.
 function Greeter:SnapshotRotation(kind)
     local rotation = self:GetRotation(kind)
     if not rotation then return nil end
