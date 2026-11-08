@@ -2,7 +2,7 @@ local addonName, ns = ...
 local Greeter = {}
 ns.Greeter = Greeter
 
-Greeter.version = "0.4.0"
+Greeter.version = "0.4.1"
 Greeter.brand = "NOVYX FORGE"
 Greeter.channels = { "GUILD", "WHISPER", "OFFICER", "LOCAL" }
 Greeter.cooldowns = { 5, 15, 30, 60, 120 }
@@ -121,7 +121,7 @@ function Greeter:IsQuiet()
 end
 
 function Greeter:RequestRoster()
-    if not self:IsGuilded() then return end
+    if self.rosterPollingBlocked or not self:IsGuilded() then return end
     if C_GuildInfo and type(C_GuildInfo.GuildRoster) == "function" then
         C_GuildInfo.GuildRoster()
     elseif type(GuildRoster) == "function" then
@@ -267,7 +267,7 @@ end
 
 -- A message is composed only when its recipient is still relevant. Its
 -- rotation is snapshotted so failed/blocked/local sends cannot burn a slot.
-function Greeter:ProcessQueue()
+function Greeter:ProcessQueue(fromHardware)
     if #self.queue == 0 then return end
     if self:IsQuiet() then
         self.queue, self.queuedKeys = {}, {}
@@ -291,11 +291,19 @@ function Greeter:ProcessQueue()
         self.queuedKeys[entry.key] = nil
         return
     end
-    if self.db.manualMode or self.chatBlocked then
+    if self.db.manualMode or self.chatBlocked or not self.keyboardReady then
         table.remove(self.queue, 1)
         self.queuedKeys[entry.key] = nil
         self:HoldForManual(entry)
         return
+    end
+    -- WoW Forever can reject background chat submissions without raising a
+    -- Lua error. Only send after a real user keyboard event, never OnUpdate.
+    if not fromHardware then return end
+    if type(InCombatLockdown) == "function" and InCombatLockdown() then return end
+    if C_ChatInfo and type(C_ChatInfo.InChatMessagingLockdown) == "function" then
+        local ok, locked = pcall(C_ChatInfo.InChatMessagingLockdown)
+        if not ok or locked then return end
     end
     if now - self.lastBroadcast < self.db.spacingSeconds then return end
     local kept = {}
@@ -561,6 +569,7 @@ function Greeter:Initialize()
 
     self:CreateUI()
     self:CreateMinimapButton()
+    self:CreateKeyboardDispatcher()
 
     SLASH_FORGEGUILDGREETER1 = "/fgreet"
     SLASH_FORGEGUILDGREETER2 = "/guildgreeter"
@@ -598,8 +607,12 @@ function Greeter:Initialize()
     self.eventFrame:RegisterEvent("PLAYER_GUILD_UPDATE")
     self.eventFrame:RegisterEvent("GUILD_ROSTER_UPDATE")
     self.eventFrame:RegisterEvent("GUILD_RANKS_UPDATE")
-    self.eventFrame:SetScript("OnEvent", function(_, event)
-        if event == "GUILD_ROSTER_UPDATE" then
+    self.eventFrame:RegisterEvent("ADDON_ACTION_BLOCKED")
+    self.eventFrame:RegisterEvent("ADDON_ACTION_FORBIDDEN")
+    self.eventFrame:SetScript("OnEvent", function(_, event, addon, func)
+        if event == "ADDON_ACTION_BLOCKED" or event == "ADDON_ACTION_FORBIDDEN" then
+            Greeter:HandleProtectedAction(event, addon, func)
+        elseif event == "GUILD_ROSTER_UPDATE" then
             Greeter:ProcessRoster()
         else
             Greeter:RequestRoster()
@@ -622,7 +635,7 @@ function Greeter:Initialize()
         end
         if Greeter.tick >= 1 then
             Greeter.tick = 0
-            Greeter:ProcessQueue()
+            Greeter:ProcessQueue(false)
         end
     end)
     self:RequestRoster()
