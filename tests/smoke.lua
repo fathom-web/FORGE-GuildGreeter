@@ -265,7 +265,7 @@ addon.db.channels.welcome = "GUILD"
 now = now + 10
 guild[#guild + 1] = { name = "HitAndRun", rank = "Raider", online = true }
 addon:ProcessRoster()
-assert(#addon.queue == 1)
+assert(#addon.queue == 0, "Unconfirmed joins must never be queued")
 table.remove(guild, #guild)
 addon:ProcessRoster()
 addon:ProcessQueue()
