@@ -2,7 +2,7 @@ local addonName, ns = ...
 local Greeter = {}
 ns.Greeter = Greeter
 
-Greeter.version = "0.4.1"
+Greeter.version = "0.4.2"
 Greeter.brand = "NOVYX FORGE"
 Greeter.channels = { "GUILD", "WHISPER", "OFFICER", "LOCAL" }
 Greeter.cooldowns = { 5, 15, 30, 60, 120 }
@@ -226,8 +226,15 @@ end
 function Greeter:Queue(kind, member)
     if not self.db.enabled[kind] then return end
     if self:IsQuiet() then return end
-    local allowed = self:CanAnnounce()
-    if not allowed then return end
+    local allowed, reason = self:CanAnnounce()
+    if not allowed then
+        if reason == "Guild Master only" and not self.rankWarningShown then
+            self.rankWarningShown = true
+            self:Print("Auto greetings are OFF on this character: GUILD MASTER ONLY is enabled. Type /fgreet enable to allow this character, or toggle it in Advanced.")
+            self:LogAction("NOT SENDING", kind, member.name, "Guild Master Only is ON; /fgreet enable")
+        end
+        return
+    end
     if #self.queue >= 20 then return end
 
     local key = kind .. ":" .. SafeName(member.name)
@@ -267,7 +274,7 @@ end
 
 -- A message is composed only when its recipient is still relevant. Its
 -- rotation is snapshotted so failed/blocked/local sends cannot burn a slot.
-function Greeter:ProcessQueue(fromHardware)
+function Greeter:ProcessQueue()
     if #self.queue == 0 then return end
     if self:IsQuiet() then
         self.queue, self.queuedKeys = {}, {}
@@ -291,15 +298,15 @@ function Greeter:ProcessQueue(fromHardware)
         self.queuedKeys[entry.key] = nil
         return
     end
-    if self.db.manualMode or self.chatBlocked or not self.keyboardReady then
+    if self.db.manualMode or self.chatBlocked then
         table.remove(self.queue, 1)
         self.queuedKeys[entry.key] = nil
         self:HoldForManual(entry)
         return
     end
-    -- WoW Forever can reject background chat submissions without raising a
-    -- Lua error. Only send after a real user keyboard event, never OnUpdate.
-    if not fromHardware then return end
+    -- Guild/officer/whisper chat types are permitted from normal addon
+    -- callbacks. SAY/YELL/CHANNEL are not offered by this addon.
+    -- In combat we defer conservatively rather than risk UI taint.
     if type(InCombatLockdown) == "function" and InCombatLockdown() then return end
     if C_ChatInfo and type(C_ChatInfo.InChatMessagingLockdown) == "function" then
         local ok, locked = pcall(C_ChatInfo.InChatMessagingLockdown)
@@ -569,7 +576,6 @@ function Greeter:Initialize()
 
     self:CreateUI()
     self:CreateMinimapButton()
-    self:CreateKeyboardDispatcher()
 
     SLASH_FORGEGUILDGREETER1 = "/fgreet"
     SLASH_FORGEGUILDGREETER2 = "/guildgreeter"
@@ -579,6 +585,13 @@ function Greeter:Initialize()
             db.enabled[cmd] = not db.enabled[cmd]
             Greeter:RefreshUI()
             Greeter:Print(cmd .. " greetings: " .. (db.enabled[cmd] and "ON" or "OFF"))
+        elseif cmd == "enable" then
+            -- Explicitly allow this character to broadcast even if it is
+            -- not the Guild Master. Avoid running several broadcasters.
+            db.leaderOnly = false
+            Greeter.rankWarningShown = false
+            Greeter:RefreshUI()
+            Greeter:Print("This character can now send automatic greetings. Use only one active broadcaster per guild.")
         elseif cmd == "minimap" then
             db.minimapHidden = not db.minimapHidden
             Greeter:RefreshUI()
@@ -592,11 +605,16 @@ function Greeter:Initialize()
         elseif cmd == "status" then
             local ok, why = Greeter:CanAnnounce()
             Greeter:Print("Roster: " .. (Greeter.ready and "ready" or "loading") ..
-                " | Broadcast: " .. (ok and "allowed" or why))
+                " | Sending: " .. (ok and "ENABLED" or "DISABLED: " .. tostring(why)) ..
+                " | Mode: " .. (db.manualMode and "MANUAL" or "AUTO") ..
+                " | Waiting: " .. #Greeter.queue .. " | Pending: " .. Greeter:PendingCount())
+            if not ok and why == "Guild Master only" then
+                Greeter:Print("Use /fgreet enable to enable this character; avoid installing multiple active broadcasters in the same guild.")
+            end
         elseif cmd == "about" then
             Greeter:Print("By Novyx Forge - https://wow.novyxforge.com")
         elseif cmd == "help" then
-            Greeter:Print("/fgreet, /fgreet check, /fgreet manual, /fgreet welcome, /fgreet online, /fgreet status")
+            Greeter:Print("/fgreet, /fgreet enable, /fgreet check, /fgreet manual, /fgreet welcome, /fgreet online, /fgreet status")
         else
             Greeter:Toggle()
         end
@@ -635,7 +653,7 @@ function Greeter:Initialize()
         end
         if Greeter.tick >= 1 then
             Greeter.tick = 0
-            Greeter:ProcessQueue(false)
+            Greeter:ProcessQueue()
         end
     end)
     self:RequestRoster()
@@ -643,7 +661,7 @@ function Greeter:Initialize()
         self.frame:Show()
         self:Print("First setup: open ACTIVITY and click CHECK SETUP; then use SEND TEST.")
     end
-    self:Print("Ready. /fgreet opens settings. Only the Guild Master broadcasts by default.")
+    self:Print("Ready. /fgreet opens settings. /fgreet status checks auto-sending; /fgreet enable permits this character.")
     self:RefreshUI()
 end
 
