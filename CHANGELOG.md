@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.0 — Release candidate / live WoW validation pending
+
+- Added manual-only mode and a user-click **SEND NEXT** fallback for blocked automatic greeting attempts.
+- Added a visible WAITING / MANUAL queue counter without another tab.
+- Fixed rotation and cooldown: failed, invalid and LOCAL messages no longer spend the next welcome message.
+- Added two-snapshot, three-second verification for new guild members and stricter partial-roster validation.
+- Added first-run setup prompt, Activity → CHECK SETUP and `/fgreet check` / `/fgreet manual` commands.
+- Expanded headless tests to cover blocked-chat recovery, false joins, manual sends and unchanged welcome rotation.
+- Public CurseForge release awaits live verification on WoW Forever.
+
+
 ## 0.2.0 — Smart GuildGreeter (development / in-game validation pending)
 
 ### Added
