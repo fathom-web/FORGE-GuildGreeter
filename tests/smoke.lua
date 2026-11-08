@@ -553,7 +553,7 @@ addon:Initialize()
 assert(#addon.db.messages.online == 15)
 assert(addon.db.messages.online[15] == bigger[15])
 assert(#addon.db.archivedOnlineMessages == 3)
-assert(addon.db.archivedOnlineMessages[1] == bigger[16])
+assert(addon.db.archivedOnlineMessages[1] == "CUSTOM ONLINE MESSAGE 16 for {player}")
 
 print("FORGE GuildGreeter v0.4: 15+15 fixed editable greetings, unique rotations, migration and smoke checks passed.")
 
