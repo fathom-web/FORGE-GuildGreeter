@@ -28,6 +28,8 @@ function Greeter:InitQuality()
     if not Contains(self.onlineCooldownOptions, db.onlineCooldownHours) then
         db.onlineCooldownHours = 24
     end
+    if type(db.manualMode) ~= "boolean" then db.manualMode = false end
+    if type(db.setupSeen) ~= "boolean" then db.setupSeen = false end
     if type(db.welcomeWhisperEnabled) ~= "boolean" then
         db.welcomeWhisperEnabled = false
     end
@@ -64,8 +66,9 @@ function Greeter:LogAction(status, kind, player, message)
 end
 
 function Greeter:StatusText()
-    if self.chatBlocked then return "CHAT BLOCKED" end
+    if self.chatBlocked then return "CHAT BLOCKED - SEND PENDING" end
     if self.db.paused then return "PAUSED" end
+    if self.db.manualMode then return "MANUAL MODE" end
     if not self.ready then return "LOADING ROSTER" end
     local allowed, reason = self:CanAnnounce()
     if not allowed then return "INACTIVE: " .. tostring(reason) end
@@ -197,6 +200,7 @@ function Greeter:ResetOptions()
     db.enabled.online = true
     db.leaderOnly = true
     db.paused = false
+    db.manualMode = false
     db.randomMessages = true
     if db.welcomeRotation then db.welcomeRotation.remaining = {} end
     db.discordEnabled = false
@@ -214,7 +218,156 @@ function Greeter:ResetOptions()
     db.welcomeWhisperText =
         "Welcome to {guild}, {player}! Join our Discord - ask an officer for an invite."
     self.queue, self.queuedKeys = {}, {}
+    self.pendingManual, self.manualKeys = {}, {}
+    self.chatBlocked = false
     -- Reset options, never delete the user's five customized welcome texts.
     self:LogAction("RESET", "settings", LocalPlayer(), "Options restored; messages retained")
     self:RefreshUI()
+end
+
+
+-- Snapshot the welcome shuffle bag before attempting to send. A failed API
+-- call must not silently spend one of the five customizable welcome messages.
+function Greeter:SnapshotRotation(kind)
+    if kind ~= "welcome" then return { picked = self.lastPicked[kind] } end
+    local state = self.db.welcomeRotation
+    local snapshot = { lastIndex = state.lastIndex, remaining = {} }
+    for i, value in ipairs(state.remaining) do snapshot.remaining[i] = value end
+    return snapshot
+end
+
+function Greeter:RestoreRotation(kind, state)
+    if kind ~= "welcome" then
+        self.lastPicked[kind] = state and state.picked or nil
+        return
+    end
+    if not state then return end
+    local current = self.db.welcomeRotation
+    current.lastIndex, current.remaining = state.lastIndex, {}
+    for i, value in ipairs(state.remaining) do current.remaining[i] = value end
+end
+
+function Greeter:HoldForManual(entry)
+    if not self.pendingManual or not entry then return false end
+    if self.manualKeys[entry.key] then return false end
+    if #self.pendingManual >= 20 then
+        self:LogAction("SKIPPED", entry.kind, entry.member.name,
+            "Manual queue full (20); greeting not stored")
+        return false
+    end
+    self.pendingManual[#self.pendingManual + 1] = {
+        kind = entry.kind, key = entry.key,
+        member = { name = entry.member.name },
+        enqueued = entry.enqueued,
+    }
+    self.manualKeys[entry.key] = true
+    self:RefreshUI()
+    return true
+end
+
+function Greeter:PendingCount()
+    return self.pendingManual and #self.pendingManual or 0
+end
+
+function Greeter:DiscardFirstPending()
+    if not self.pendingManual or #self.pendingManual == 0 then return nil end
+    local entry = table.remove(self.pendingManual, 1)
+    self.manualKeys[entry.key] = nil
+    return entry
+end
+
+function Greeter:SendNextPending()
+    -- Only called from an actual click on the "SEND NEXT" WoW UI button or
+    -- another deliberate user invocation. Never called from OnUpdate.
+    if self:PendingCount() == 0 then
+        self:Print("No pending greetings.")
+        return false
+    end
+    if not self:CanAnnounce() or self:IsQuiet() then
+        self:Print("Greeting is paused, inactive or within quiet hours.")
+        return false
+    end
+    local now = self:Now()
+    local entry = self.pendingManual[1]
+    if now - entry.enqueued > 1800 then
+        self:DiscardFirstPending()
+        self:Print("Pending greeting expired after 30 minutes.")
+        self:RefreshUI()
+        return false
+    end
+    local member = self.roster[string.lower(entry.member.name)]
+    if not member or (entry.kind == "online" and not member.online) then
+        self:DiscardFirstPending()
+        self:Print("Member is no longer eligible; pending greeting discarded.")
+        self:RefreshUI()
+        return false
+    end
+    local cooldown = entry.kind == "online"
+        and self.db.onlineCooldownHours * 3600 or self.db.cooldownMinutes * 60
+    local last = self.db.lastSent[entry.key]
+    if type(last) == "number" and now - last < cooldown then
+        self:DiscardFirstPending()
+        self:Print("Greeting already sent within cooldown; discarded duplicate.")
+        self:RefreshUI()
+        return false
+    end
+    if now - self.lastBroadcast < self.db.spacingSeconds then
+        self:Print("Chat spacing is active. Try sending again shortly.")
+        return false
+    end
+    local stamps = {}
+    for _, stamp in ipairs(self.sentTimes) do
+        if now - stamp < 300 then stamps[#stamps + 1] = stamp end
+    end
+    self.sentTimes = stamps
+    if #stamps >= self.db.maxPerFiveMinutes then
+        self:Print("Rate limit reached. Try again after the five-minute window.")
+        return false
+    end
+    local before = self:SnapshotRotation(entry.kind)
+    local message = self:Compose(entry.kind, member)
+    if not message then
+        self:RestoreRotation(entry.kind, before)
+        self:LogAction("BLOCKED", entry.kind, member.name,
+            "Invalid greeting. Edit template before retry.")
+        return false
+    end
+    if self.db.channels[entry.kind] == "LOCAL" then
+        self:RestoreRotation(entry.kind, before)
+        self:Send(entry.kind, member, message)
+        self:DiscardFirstPending()
+        self:RefreshUI()
+        return true
+    end
+    if not self:Send(entry.kind, member, message) then
+        self:RestoreRotation(entry.kind, before)
+        self:Print("Pending greeting remains queued. Try a manual click again.")
+        return false
+    end
+    self:DiscardFirstPending()
+    self.lastBroadcast = now
+    self.sentTimes[#self.sentTimes + 1] = now
+    self.db.lastSent[entry.key] = now
+    self.db.stats[entry.kind] = (self.db.stats[entry.kind] or 0) + 1
+    self:RefreshUI()
+    return true
+end
+
+function Greeter:RunSetupCheck()
+    self.db.setupSeen = true
+    local ok, why = self:CanAnnounce()
+    self:Print("Setup check - guild: " .. self:GuildName() ..
+        " | roster: " .. (self.ready and "ready" or "loading"))
+    self:Print("Broadcast eligibility: " ..
+        (ok and "allowed" or tostring(why)))
+    local hasChat = (C_ChatInfo and type(C_ChatInfo.SendChatMessage) == "function")
+        or type(SendChatMessage) == "function"
+    self:Print("Chat API: " .. (hasChat and "present" or "not available") ..
+        " | mode: " .. (self.db.manualMode and "manual" or "automatic"))
+    self:Print("Welcome: " .. (self.db.enabled.welcome and "ON" or "OFF") ..
+        " | online: " .. (self.db.enabled.online and "ON" or "OFF") ..
+        " | pending: " .. self:PendingCount())
+    self:Print("Next: use PREVIEW, then SEND TEST. Real automatic delivery must be checked with a guildmate.")
+    self:RefreshUI()
+    return ok and self.ready and hasChat and true or false
 end
