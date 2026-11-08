@@ -556,6 +556,13 @@ function Greeter:Initialize()
         elseif cmd == "minimap" then
             db.minimapHidden = not db.minimapHidden
             Greeter:RefreshUI()
+        elseif cmd == "check" then
+            Greeter:RunSetupCheck()
+        elseif cmd == "manual" then
+            db.manualMode = not db.manualMode
+            Greeter:RefreshUI()
+            Greeter:Print("Manual mode " .. (db.manualMode and "ON" or "OFF") ..
+                ". Pending greetings are sent with the SEND NEXT button.")
         elseif cmd == "status" then
             local ok, why = Greeter:CanAnnounce()
             Greeter:Print("Roster: " .. (Greeter.ready and "ready" or "loading") ..
@@ -563,7 +570,7 @@ function Greeter:Initialize()
         elseif cmd == "about" then
             Greeter:Print("By Novyx Forge - https://wow.novyxforge.com")
         elseif cmd == "help" then
-            Greeter:Print("/fgreet, /fgreet welcome, /fgreet online, /fgreet minimap, /fgreet status")
+            Greeter:Print("/fgreet, /fgreet check, /fgreet manual, /fgreet welcome, /fgreet online, /fgreet status")
         else
             Greeter:Toggle()
         end
@@ -602,6 +609,10 @@ function Greeter:Initialize()
         end
     end)
     self:RequestRoster()
+    if not db.setupSeen then
+        self.frame:Show()
+        self:Print("First setup: open ACTIVITY and click CHECK SETUP; then use SEND TEST.")
+    end
     self:Print("Ready. /fgreet opens settings. Only the Guild Master broadcasts by default.")
     self:RefreshUI()
 end
