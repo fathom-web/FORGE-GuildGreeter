@@ -4,13 +4,13 @@
 
 A customizable, lightweight World of Warcraft **Forever** guild welcome addon by [Novyx Forge](https://wow.novyxforge.com/). Built using the dark charcoal/gold native UI design language of **FORGE AFK — DAD MODE**.
 
-**Version: 0.2.0** — development build; in-game verification is required before CurseForge publication.
+**Version: 0.3.0** — development build; in-game verification is required before CurseForge publication.
 
 ## What it does
 
 - **New guild members:** detect players appearing in the guild roster after the initial baseline, and announce a welcome.
 - **Existing members who come online:** detect changes from offline to online and greet them once.
-- **No login flood:** the guild members already visible when you log in are the baseline, not new arrivals.
+- **No login flood:** the guild members already visible when you log in are the baseline, not new arrivals. A new member must appear in two complete roster snapshots at least 3 seconds apart before triggering a welcome.
 - **Five fixed, fully editable welcome messages:** all five are used in a shuffled rotation before any repeats; the next round never starts with the previous round's last message. The rotation survives /reload and reconnects.
 - **Online greetings:** edit, add, remove or cycle through up to **50 custom login messages**. Four humorous examples are included.
 - **Template variables:** \`{player}\`, \`{full}\`, \`{guild}\`, \`{class}\`, \`{level}\`, \`{rank}\`.
@@ -23,7 +23,10 @@ A customizable, lightweight World of Warcraft **Forever** guild welcome addon by
 - **Saved settings, moveable panel, draggable minimap icon.** Right-click the minimap icon to pause/resume all announcements.
 - **Safe preview and click-to-send test:** each selected message has Preview and Send Test. Send Test uses the selected channel, prefixes the message with [TEST], and never advances the welcome rotation or automated cooldowns. The recipient for test whispers is your own character.
 - **Optional personal welcome whisper:** a separately editable template, off by default and limited to one request per new member every 24 hours.
-- **Activity log:** last ten local previews, chat submission attempts, blocks and resets. Status shows ACTIVE, PAUSED or CHAT BLOCKED (where API errors are detectable).
+- **Activity log:** last ten local previews, chat submission attempts, blocks and resets. Status shows ACTIVE, PAUSED, MANUAL MODE or CHAT BLOCKED (where API errors are detectable).
+- **Manual fallback:** when the automatic chat API rejects a greeting, that event is held in a 20-item, session-only manual queue. Click **SEND NEXT** to attempt it explicitly. Alternatively enable **Manual Mode** in Advanced → Behavior to hold all new greetings for your confirmation. Events expire after 30 minutes and are checked against the live guild roster before sending.
+- **No false consumption:** failed, oversized and LOCAL-preview messages do not consume a slot from the five-message welcome rotation or set the send cooldown.
+- **First-run check:** on first installation the panel opens with a pointer to **Activity → CHECK SETUP**. Check guild membership, rank, roster readiness and chat API presence; verify real delivery with SEND TEST and a guildmate.
 - **Restore defaults:** individual original messages can be restored. The Advanced → Behavior reset requires a second click within 15 seconds and preserves all customized greeting templates.
 - **Roster burst protection:** ignores large incomplete roster drops and suppresses mass welcome floods after suspiciously large increases.
 - No third-party libraries, tracking, accounts, or background servers.
@@ -36,9 +39,9 @@ Dark charcoal background, gold typography and buttons, same visual conventions a
 | --- | --- |
 | WELCOME | Five fixed editable welcome slots, Previous/Next, Save, Preview, Send Test, Restore Original, channel |
 | ONLINE | Online greetings, message add/remove, Save, Preview, Send Test, Restore Original, channel |
-| ADVANCED → Behavior | Guild Master only, randomized messages, cooldowns, quiet hours, pacing, rate limit, reset defaults with confirmation |
+| ADVANCED → Behavior | Guild Master only, automatic/manual mode, randomized messages, cooldowns, quiet hours, pacing, rate limit, reset defaults with confirmation |
 | ADVANCED → Messages | Discord reminder and optional personal welcome whisper with independent editable texts |
-| ACTIVITY | Last ten actions, with BLOCKED or REQUESTED status where applicable |
+| ACTIVITY | Last ten actions, blocked/requested status, plus CHECK SETUP; the main panel shows WAITING/MANUAL queue counters and SEND NEXT |
 
 Two main buttons across the top enable/disable welcome and online greetings independently. All edits are stored in WoW's SavedVariables.
 
@@ -64,6 +67,8 @@ The intended TOC interface is **16001**, following the known-working FORGE AFK a
 | \`/fgreet online\` | Toggle member-online greetings |
 | \`/fgreet minimap\` | Show/hide minimap icon |
 | \`/fgreet status\` | Guild roster / broadcast status |
+| \`/fgreet check\` | Run first-use diagnostic checklist |
+| \`/fgreet manual\` | Toggle explicit click-to-send mode |
 | \`/fgreet help\` | Short command help |
 | \`/fgreet about\` | Novyx Forge information |
 
@@ -71,7 +76,7 @@ The intended TOC interface is **16001**, following the known-working FORGE AFK a
 
 The addon requests the guild roster and listens for \`GUILD_ROSTER_UPDATE\` events. When roster data first becomes available, it records a baseline and **does not** message any members. Later:
 
-- A new roster entry causes a **single welcome** (no immediate extra online greeting).
+- A new roster entry confirmed on **two complete snapshots at least three seconds apart** causes one welcome (no immediate online greeting). Suspected bulk refills are silently rebaselined.
 - An existing roster entry changing from offline to online causes an **online greeting**.
 - Repeated events and short reconnects are suppressed by the cooldowns.
 - Temporary incomplete roster snapshots are ignored, and suspicious large roster expansions are treated as silent rebaselines rather than mass joins.
@@ -104,7 +109,11 @@ The addon attempts messages through the standard WoW chat API. **Some versions o
 - [ ] Reset one template, then reset advanced settings with two clicks; ensure custom texts survive.
 - [ ] Verify template variable substitutions for all available variables.
 - [ ] Log in as Guild Master and verify **no initial message flood**.
-- [ ] Have one new player join while you are online; verify exactly one welcome.
+- [ ] Have one new player join while you are online; confirm exactly one welcome after two stable guild-roster updates.
+- [ ] Simulate a partial roster load, a quick join-and-leave, and a bulk roster refresh: no false welcomes.
+- [ ] Block chat APIs in test mode: ensure failed sends preserve rotation and enter the manual queue.
+- [ ] Switch to Manual Mode: verify that new events queue, then use SEND NEXT from a real click.
+- [ ] Run Activity → CHECK SETUP and verify status/queue counters.
 - [ ] Have an existing member log off/on; verify exactly one login greeting.
 - [ ] Check whether **automatic guild-chat sending is permitted** by this client/server.
 - [ ] Test Guild, Whisper, Officer and Local channels.
