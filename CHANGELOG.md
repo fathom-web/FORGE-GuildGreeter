@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.2 — Automatic Guild Chat Recovery
+
+- Fixed a regression introduced in 0.4.1: Guild/Officer/Whisper chat no longer waits for a keyboard event; the normal background queue sends again.
+- Removed the keyboard listener entirely, avoiding unnecessary input interception and possible silent non-delivery.
+- Kept manual mode, protected-action logging, anti-spam, 15 welcome messages and 15 online messages unchanged.
+- Added an actionable warning when Guild Master Only prevents the current character from announcing.
+- Added `/fgreet enable` as a one-time, explicit opt-in for a non-Guild-Master character. Only one broadcaster per guild is recommended.
+- Expanded `/fgreet status` with sender eligibility, active mode, and queue counts.
+- Added a timer-driven guild-message regression test; Lua tests and ZIP packaging must pass before live game validation.
+
 ## 0.4.1 — WoW Forever blocked-action fix (in-game validation pending)
 
 - Replaced timer-based automatic chat sends with deferred dispatch on the next real keyboard event. The listener propagates keys instead of consuming input.
