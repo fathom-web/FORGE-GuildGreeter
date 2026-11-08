@@ -2,7 +2,7 @@ local addonName, ns = ...
 local Greeter = {}
 ns.Greeter = Greeter
 
-Greeter.version = "0.2.0"
+Greeter.version = "0.3.0"
 Greeter.brand = "NOVYX FORGE"
 Greeter.channels = { "GUILD", "WHISPER", "OFFICER", "LOCAL" }
 Greeter.cooldowns = { 5, 15, 30, 60, 120 }
@@ -113,16 +113,20 @@ function Greeter:ReadRoster()
     local count = GetNumGuildMembers()
     if type(count) ~= "number" or count < 1 then return nil end
     local snapshot = {}
+    local validRows = 0
     for i = 1, count do
         local name, rank, _, level, class, _, _, _, online = GetGuildRosterInfo(i)
         if type(name) == "string" and name ~= "" then
+            validRows = validRows + 1
             snapshot[SafeName(name)] = {
                 name = name, rank = rank or "", class = class or "",
                 level = level or "?", online = online and true or false,
             }
         end
     end
-    if not next(snapshot) then return nil end
+    -- WoW may deliver guild events while individual roster entries are nil.
+    -- Never treat a partially populated response as a membership change.
+    if validRows ~= count or not next(snapshot) then return nil end
     return snapshot
 end
 
@@ -220,7 +224,7 @@ function Greeter:Queue(kind, member)
     local now = self:Now()
     local seconds = kind == "online" and self.db.onlineCooldownHours * 3600 or self.db.cooldownMinutes * 60
     if type(last) == "number" and now - last < seconds then return end
-    if self.queuedKeys[key] then return end
+    if self.queuedKeys[key] or (self.manualKeys and self.manualKeys[key]) then return end
     self.queue[#self.queue + 1] = {
         kind = kind, member = member, key = key, enqueued = now,
     }
@@ -250,20 +254,39 @@ function Greeter:Send(kind, member, content)
     return true
 end
 
+-- A message is composed only when its recipient is still relevant. Its
+-- rotation is snapshotted so failed/blocked/local sends cannot burn a slot.
 function Greeter:ProcessQueue()
     if #self.queue == 0 then return end
-    local now = self:Now()
     if self:IsQuiet() then
         self.queue, self.queuedKeys = {}, {}
         return
     end
-    local permitted = self:CanAnnounce()
-    if not permitted then
+    if not self:CanAnnounce() then
         self.queue, self.queuedKeys = {}, {}
         return
     end
+    local now = self:Now()
+    local entry = self.queue[1]
+    if not entry then return end
+    if now - entry.enqueued > 180 then
+        table.remove(self.queue, 1)
+        self.queuedKeys[entry.key] = nil
+        return
+    end
+    local current = self.roster[SafeName(entry.member.name)]
+    if not current or (entry.kind == "online" and not current.online) then
+        table.remove(self.queue, 1)
+        self.queuedKeys[entry.key] = nil
+        return
+    end
+    if self.db.manualMode or self.chatBlocked then
+        table.remove(self.queue, 1)
+        self.queuedKeys[entry.key] = nil
+        self:HoldForManual(entry)
+        return
+    end
     if now - self.lastBroadcast < self.db.spacingSeconds then return end
-
     local kept = {}
     for _, stamp in ipairs(self.sentTimes) do
         if now - stamp < 300 then kept[#kept + 1] = stamp end
@@ -271,64 +294,93 @@ function Greeter:ProcessQueue()
     self.sentTimes = kept
     if #kept >= self.db.maxPerFiveMinutes then return end
 
-    local entry = table.remove(self.queue, 1)
+    table.remove(self.queue, 1)
     self.queuedKeys[entry.key] = nil
-    if now - entry.enqueued > 180 then return end
-    local current = self.roster[SafeName(entry.member.name)]
-    if not current or (entry.kind == "online" and not current.online) then return end
-    local message = self:Compose(entry.kind, current)
-    if not message then return end
-    if self:Send(entry.kind, entry.member, message) then
-        self.lastBroadcast = now
-        self.sentTimes[#self.sentTimes + 1] = now
-        self.db.lastSent[entry.key] = now
-        self.db.stats[entry.kind] = (self.db.stats[entry.kind] or 0) + 1
-        self:RefreshUI()
+    local before = self:SnapshotRotation(entry.kind)
+    local content = self:Compose(entry.kind, current)
+    if not content then
+        self:RestoreRotation(entry.kind, before)
+        self:HoldForManual(entry)
+        self:LogAction("BLOCKED", entry.kind, current.name, "Invalid/oversized greeting; edit template")
+        return
     end
+    if self.db.channels[entry.kind] == "LOCAL" then
+        self:RestoreRotation(entry.kind, before)
+        self:Send(entry.kind, current, content)
+        return
+    end
+    if not self:Send(entry.kind, current, content) then
+        self:RestoreRotation(entry.kind, before)
+        self:HoldForManual(entry)
+        return
+    end
+    self.lastBroadcast = now
+    self.sentTimes[#self.sentTimes + 1] = now
+    self.db.lastSent[entry.key] = now
+    self.db.stats[entry.kind] = (self.db.stats[entry.kind] or 0) + 1
+    self:RefreshUI()
 end
 
+-- Never infer a join from one roster snapshot: every new name must appear
+-- in two complete snapshots separated by at least three seconds.
 function Greeter:ProcessRoster()
     if not self:IsGuilded() then
         self.ready = false
-        self.roster = {}
+        self.roster, self.seenNames, self.joinCandidates = {}, {}, {}
         self.queue, self.queuedKeys = {}, {}
+        self.pendingManual, self.manualKeys = {}, {}
         return
     end
     local fresh = self:ReadRoster()
     if not fresh then return end
+    local now = self:Now()
     if not self.ready then
-        -- Baseline first: never greet every player already online on login.
-        self.roster = fresh
+        self.roster, self.seenNames, self.joinCandidates = fresh, {}, {}
+        for key in pairs(fresh) do self.seenNames[key] = true end
         self.ready = true
         self:RefreshUI()
         return
     end
 
     local old = self.roster
-    local oldCount, newCount = 0, 0
+    local oldCount, newCount, additions = 0, 0, 0
     for _ in pairs(old) do oldCount = oldCount + 1 end
-    for _ in pairs(fresh) do newCount = newCount + 1 end
-    -- Ignore incomplete/erratic roster snapshots: a temporary list reload
-    -- must not be mistaken for guildmates leaving and rejoining.
-    if oldCount >= 5 and newCount < math.floor(oldCount * 0.8) then return end
-    -- A sudden bulk increase usually indicates that the roster was still
-    -- loading. Rebaseline silently instead of welcoming dozens of ghosts.
-    if newCount - oldCount > 3 then
-        self.roster = fresh
-        self:LogAction("SKIPPED", "roster", "Guild", "Large roster change; no mass greetings")
+    for key in pairs(fresh) do
+        newCount = newCount + 1
+        if not self.seenNames[key] then additions = additions + 1 end
+    end
+    -- Treat suspicious shrinks as incomplete cached roster reads, including
+    -- small guilds where a single missing row would cause false joins.
+    if oldCount >= 3 and newCount < math.floor(oldCount * 0.8 + 0.5) then return end
+    if additions > 3 then
+        -- On a large guild roster refill, learn names without welcoming a crowd.
+        self.roster, self.joinCandidates = fresh, {}
+        for key in pairs(fresh) do self.seenNames[key] = true end
+        self:LogAction("SKIPPED", "roster", "Guild", "Bulk roster refill: no mass welcomes")
+        self:RefreshUI()
         return
     end
 
+    local possibleJoins = {}
     for key, member in pairs(fresh) do
-        local previous = old[key]
-        if not previous then
-            self:Queue("welcome", member)
-            -- A new guild member never also gets an immediate login greeting.
-        elseif member.online and not previous.online then
+        if not self.seenNames[key] then
+            local candidate = self.joinCandidates[key]
+            if not candidate then
+                possibleJoins[key] = { since = now }
+            elseif now - candidate.since >= 3 then
+                self.seenNames[key] = true
+                self:Queue("welcome", member)
+            else
+                possibleJoins[key] = candidate
+            end
+        elseif old[key] and member.online and not old[key].online then
             self:Queue("online", member)
         end
     end
+    self.joinCandidates = possibleJoins
     self.roster = fresh
+    if next(possibleJoins) then self.rosterCheckSoon = true end
+    self:RefreshUI()
 end
 
 function Greeter:SaveMessage(kind, index, text)
@@ -484,6 +536,9 @@ function Greeter:Initialize()
 
     self.queue, self.queuedKeys, self.sentTimes = {}, {}, {}
     self.roster, self.lastPicked, self.ready = {}, {}, false
+    self.seenNames, self.joinCandidates = {}, {}
+    self.pendingManual, self.manualKeys = {}, {}
+    self.rosterCheckSoon, self.rosterCheckElapsed = false, 0
     self.lastBroadcast = now - db.spacingSeconds
     self.tick, self.rosterTick = 0, 0
 
@@ -529,6 +584,14 @@ function Greeter:Initialize()
     self.eventFrame:SetScript("OnUpdate", function(_, elapsed)
         Greeter.tick = Greeter.tick + elapsed
         Greeter.rosterTick = Greeter.rosterTick + elapsed
+        if Greeter.rosterCheckSoon then
+            Greeter.rosterCheckElapsed = (Greeter.rosterCheckElapsed or 0) + elapsed
+            if Greeter.rosterCheckElapsed >= 3 then
+                Greeter.rosterCheckSoon = false
+                Greeter.rosterCheckElapsed = 0
+                Greeter:RequestRoster()
+            end
+        end
         if Greeter.rosterTick >= 30 then
             Greeter.rosterTick = 0
             Greeter:RequestRoster()
