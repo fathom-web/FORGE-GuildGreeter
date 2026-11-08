@@ -166,8 +166,8 @@ function Greeter:Expand(template, member)
     end))
 end
 
--- Welcome messages have five fixed editable slots. Their shuffled-bag state
--- is saved, so reloading the game does not restart the cycle or repeat a slot.
+-- Both message libraries have fifteen fixed editable slots, with separate
+-- saved rotations that survive login/reload without duplicate adjacent texts.
 -- Both message types use independent persisted shuffle bags. One full round
 -- plays every editable slot exactly once, with no identical boundary message.
 function Greeter:GetRotation(kind)
